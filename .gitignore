@@ -1,0 +1,6 @@
+
+# Local dev/verification artifacts
+dev/
+
+# Secrets
+.env
