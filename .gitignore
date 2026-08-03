@@ -4,3 +4,6 @@ dev/
 
 # Secrets
 .env
+
+# macOS
+.DS_Store
