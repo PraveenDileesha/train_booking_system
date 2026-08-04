@@ -7,3 +7,13 @@ dev/
 
 # macOS
 .DS_Store
+
+# Node dependencies
+frontend/node_modules/
+frontend/.pnpm-store/
+
+# Frontend build output
+frontend/dist/
+
+# Claude Code local settings
+.claude/settings.local.json
