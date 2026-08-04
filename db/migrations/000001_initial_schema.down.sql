@@ -1,0 +1,15 @@
+DROP TABLE IF EXISTS unreserved_tickets;
+DROP TABLE IF EXISTS bookings;
+DROP TABLE IF EXISTS passengers;
+DROP TABLE IF EXISTS trip_seats;
+DROP TABLE IF EXISTS seats;
+DROP TABLE IF EXISTS trip_coaches;
+DROP TABLE IF EXISTS coaches;
+DROP TABLE IF EXISTS trips;
+DROP TABLE IF EXISTS route_stations;
+DROP TABLE IF EXISTS stations;
+DROP TABLE IF EXISTS route_versions;
+DROP TABLE IF EXISTS routes;
+
+DROP TYPE IF EXISTS booking_status;
+DROP TYPE IF EXISTS trip_status;
