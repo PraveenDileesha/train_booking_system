@@ -19,7 +19,7 @@ type CounterHandler struct {
 	Queries *generated.Queries
 }
 
-// maxTicketsPerIssue caps how many unreserved tickets one counter transaction can sell at once — mirrors the reserved-seat booking limit in bookings.go, so a single sale can't silently sweep up an unbounded block of tickets.
+// maxTicketsPerIssue caps how many unreserved tickets one counter transaction can sell at once. Mirrors the reserved-seat booking limit in bookings.go, so a single sale can't silently sweep up an unbounded block of tickets.
 const maxTicketsPerIssue = 5
 
 type issueUnreservedTicketRequest struct {
@@ -42,7 +42,7 @@ type unreservedTicketResponse struct {
 }
 
 // IssueUnreservedTicket records a first-come-first-served ticket sale.
-// There is no seat, no hold, and no coach-capacity check — unreserved coaches have no per-seat inventory, matching the real system this replaces.
+// There is no seat, no hold, and no coach-capacity check. Unreserved coaches have no per-seat inventory, matching the real system this replaces.
 // maxTicketsPerIssue still caps a single sale.
 // The row exists purely for revenue tracking.
 func (h *CounterHandler) IssueUnreservedTicket(w http.ResponseWriter, r *http.Request) {

@@ -1,5 +1,5 @@
 -- =========================================================
--- Segment-Based Train Seat Booking System — Schema
+-- Segment-Based Train Seat Booking System Schema
 -- =========================================================
 
 -- Needed for the GiST exclusion constraint (equality + range together)

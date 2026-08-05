@@ -21,7 +21,7 @@ LIMIT sqlc.arg(row_limit) OFFSET sqlc.arg(row_offset);
 SELECT COUNT(*) FROM trips;
 
 -- name: SearchTrips :many
--- Matches by station pair, not route_id: a trip qualifies if its route passes through both stations in that order on the given date.
+-- Matches by station pair, not route_id. A trip qualifies if its route passes through both stations in that order on the given date.
 SELECT t.id, t.route_version_id, t.departure_date, t.departure_time, t.status, t.arrival_date, t.arrival_time,
        r.name AS route_name
 FROM trips t
@@ -49,6 +49,6 @@ WHERE t.departure_date = sqlc.arg(departure_date)
   AND rs_start.stop_sequence < rs_end.stop_sequence;
 
 -- name: DeleteTrip :execrows
--- Fails with a restrict_violation if any booking or unreserved ticket references this trip: bookings RESTRICT trip_seats, and unreserved_tickets RESTRICTs trips directly.
+-- Fails with a restrict_violation if any booking or unreserved ticket references this trip. Bookings RESTRICT trip_seats, and unreserved_tickets RESTRICTs trips directly.
 DELETE FROM trips
 WHERE id = $1;

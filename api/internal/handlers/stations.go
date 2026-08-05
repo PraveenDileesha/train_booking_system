@@ -49,7 +49,7 @@ func (h *StationHandler) CreateStation(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListStations defaults to numeric ID order (what the admin stations table wants).
-// Pass ?sort=name for alphabetical order — used by every station picker or dropdown outside that table, where a user is scanning for a name rather than tracking IDs.
+// Pass ?sort=name for alphabetical order, used by every station picker or dropdown outside that table, where a user is scanning for a name rather than tracking IDs.
 func (h *StationHandler) ListStations(w http.ResponseWriter, r *http.Request) {
 	page, pageSize := parsePagination(r)
 	limit, offset := int32(pageSize), int32((page-1)*pageSize)

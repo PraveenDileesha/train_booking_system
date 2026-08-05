@@ -1,11 +1,11 @@
 #!/bin/bash
-# Seeds a demo dataset through the real admin API: stations along the Colombo Fort - Badulla upcountry line, one route connecting them, 8 coaches spanning every class and reservation combination, and 6 trips (three days, two time slots each) fully coached and fared.
+# Seeds a demo dataset through the real admin API, covering stations along the Colombo Fort - Badulla upcountry line, one route connecting them, 8 coaches spanning every class and reservation combination, and 6 trips (three days, two time slots each) fully coached and fared.
 # This is enough to exercise customer search and booking, counter unreserved-ticket sales, and every admin screen.
 #
 # Going through the API instead of raw SQL means every row is created by the same validation, seat-generation, and capacity logic a real admin request would hit, so seeded data can never drift out of sync with the schema.
 #
-# Usage: ./scripts/seed_demo.sh
-# Requires: curl, jq, and a running API (docker compose up, or API_BASE_URL pointing at one).
+# Run as ./scripts/seed_demo.sh
+# Requires curl, jq, and a running API (docker compose up, or API_BASE_URL pointing at one).
 set -euo pipefail
 
 BASE_URL="${API_BASE_URL:-http://localhost:8080}/api/v1"
@@ -156,7 +156,7 @@ route_id="$(echo "$route_resp" | jq -r '.route.id')"
 echo "created route: $DEMO_ROUTE_NAME (id $route_id)"
 
 # ---------- Coaches ----------
-# 8 coaches, 8 rows each: 3 reserved (one per class), 5 unreserved.
+# 8 coaches, 8 rows each, 3 reserved (one per class) and 5 unreserved.
 # name:class:is_reservable:row_count
 COACHES=(
   "1st AC Saloon A:FIRST_AC:true:8"

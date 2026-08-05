@@ -11,8 +11,8 @@ import (
 )
 
 // IPRateLimiter gives each client IP its own token bucket.
-// This is an in-process limiter: correct and sufficient for a single API instance.
-// If this service ever runs as multiple replicas behind a load balancer, per-instance limits stop being globally accurate and the state would need to move to a shared store (e.g. Redis) — not needed at this scale.
+// This is an in-process limiter, correct and sufficient for a single API instance.
+// If this service ever runs as multiple replicas behind a load balancer, per-instance limits stop being globally accurate and the state would need to move to a shared store such as Redis, which isn't needed at this scale.
 type IPRateLimiter struct {
 	mu       sync.Mutex
 	visitors map[string]*visitor
@@ -65,7 +65,7 @@ func (l *IPRateLimiter) evictStaleVisitors() {
 }
 
 func clientIP(r *http.Request) string {
-	// This service isn't deployed behind a reverse proxy, so RemoteAddr is the real client address — no X-Forwarded-For handling needed.
+	// This service isn't deployed behind a reverse proxy, so RemoteAddr is the real client address and no X-Forwarded-For handling is needed.
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr

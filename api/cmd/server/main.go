@@ -36,7 +36,7 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	// Public (non-admin) endpoints are the ones exposed to anonymous customers and the ticket counter — 5 requests/second sustained per IP, bursts up to 20.
+	// Public (non-admin) endpoints are the ones exposed to anonymous customers and the ticket counter. 5 requests per second sustained per IP, bursts up to 20.
 	// Admin endpoints are trusted internal tooling and aren't rate limited.
 	publicLimiter := middleware.NewIPRateLimiter(rate.Limit(5), 20)
 

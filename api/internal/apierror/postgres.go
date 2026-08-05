@@ -8,7 +8,7 @@ import (
 )
 
 // WritePostgresError inspects a Postgres error and writes an appropriate HTTP status and message.
-// Returns true if it recognized and handled the error; false if the caller should fall back to a generic 500.
+// Returns true if it recognized and handled the error, and false if the caller should fall back to a generic 500.
 func WritePostgresError(w http.ResponseWriter, err error) bool {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) {

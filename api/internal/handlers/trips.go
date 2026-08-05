@@ -272,7 +272,7 @@ func (h *TripHandler) ListTrips(w http.ResponseWriter, r *http.Request) {
 }
 
 // DeleteTrip removes a trip that has no activity against it.
-// Fails with a 409 if any booking or unreserved ticket references it: bookings RESTRICT trip_seats, and unreserved_tickets RESTRICTs trips directly.
+// Fails with a 409 if any booking or unreserved ticket references it. Bookings RESTRICT trip_seats, and unreserved_tickets RESTRICTs trips directly.
 func (h *TripHandler) DeleteTrip(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
@@ -298,7 +298,7 @@ func (h *TripHandler) DeleteTrip(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// GetTrip returns full detail for a trip: its route's stations (with sequence and distance, needed by the frontend to compute legs), attached coaches, and fare rates.
+// GetTrip returns full detail for a trip, including its route's stations (with sequence and distance, needed by the frontend to compute legs), attached coaches, and fare rates.
 // Used by both the admin trip page and the customer booking flow.
 func (h *TripHandler) GetTrip(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))

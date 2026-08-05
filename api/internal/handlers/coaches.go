@@ -19,7 +19,7 @@ type CoachHandler struct {
 	Queries *generated.Queries
 }
 
-// seatLetters returns the seat letters for one row of the given class, following real Sri Lanka Railways carriage layouts: First/Second class run 2+2 (four seats per row), Third class runs 3+2 (five seats per row).
+// seatLetters returns the seat letters for one row of the given class, following real Sri Lanka Railways carriage layouts. First and Second class run 2+2 (four seats per row) and Third class runs 3+2 (five seats per row).
 func seatLetters(class generated.CoachClass) []string {
 	switch class {
 	case generated.CoachClassTHIRD:

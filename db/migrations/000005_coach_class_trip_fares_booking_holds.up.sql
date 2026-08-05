@@ -21,7 +21,7 @@ CREATE TABLE trip_fares (
 );
 
 -- ---------- Booking holds ----------
--- A PENDING booking reserves the seat until held_until; after that it is treated as free by availability checks.
+-- A PENDING booking reserves the seat until held_until. After that it is treated as free by availability checks.
 ALTER TABLE bookings
     ADD COLUMN held_until TIMESTAMP;
 

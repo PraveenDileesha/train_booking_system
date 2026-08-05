@@ -1,9 +1,9 @@
 #!/bin/bash
 #
-# migrate.sh — applies database migrations using golang-migrate inside a throwaway Docker container.
+# migrate.sh applies database migrations using golang-migrate inside a throwaway Docker container.
 # No local install of migrate is required.
 #
-# Usage:
+# Usage
 #   ./scripts/migrate.sh up               # apply all pending migrations
 #   ./scripts/migrate.sh up 1             # apply the next N migrations
 #   ./scripts/migrate.sh down 1           # roll back the last N migrations
@@ -24,7 +24,7 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
-# Word splitting is intentional here: each "KEY=VALUE" line in .env becomes a separate argument to `export`.
+# Word splitting is intentional here, since each "KEY=VALUE" line in .env becomes a separate argument to `export`.
 # shellcheck disable=SC2046
 export $(grep -v '^#' .env | grep -v '^$' | xargs)
 

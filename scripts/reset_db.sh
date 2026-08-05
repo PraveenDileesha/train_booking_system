@@ -2,7 +2,7 @@
 # Wipes every table's data (all rows, all tables in the public schema) without touching the schema itself, so seed_demo.sh always starts from a clean slate and IDs restart at 1.
 # Table list is discovered at runtime from pg_tables rather than hardcoded, so it stays correct as the schema grows.
 #
-# Usage: ./scripts/reset_db.sh
+# Run as ./scripts/reset_db.sh
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

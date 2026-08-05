@@ -23,7 +23,7 @@ import (
 
 const holdDuration = 5 * time.Minute
 
-// maxSeatsPerBooking caps how many seats one customer can hold in a single request — enforced here (not just in the UI) since the API is the actual trust boundary.
+// maxSeatsPerBooking caps how many seats one customer can hold in a single request. Enforced here, not just in the UI, since the API is the actual trust boundary.
 const maxSeatsPerBooking = 5
 
 type BookingHandler struct {
@@ -49,7 +49,7 @@ type routeVersionStop struct {
 	DistanceFromOrigin float64
 }
 
-// stopsByStation is shared by any handler that needs to turn a station pair into a sequence range and distance for a given route version — booking a reserved seat and issuing an unreserved ticket both need it.
+// stopsByStation is shared by any handler that needs to turn a station pair into a sequence range and distance for a given route version. Booking a reserved seat and issuing an unreserved ticket both need it.
 func stopsByStation(ctx context.Context, q *generated.Queries, routeVersionID int32) (map[int32]routeVersionStop, error) {
 	rows, err := q.GetRouteVersionStations(ctx, routeVersionID)
 	if err != nil {
@@ -129,7 +129,7 @@ func (h *BookingHandler) ListAvailableSeats(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Only reserved coaches have individually bookable seats; unreserved coaches are first-come-first-served and don't appear on the seat map.
+	// Only reserved coaches have individually bookable seats. Unreserved coaches are first-come-first-served and don't appear on the seat map.
 	seats := make([]generated.ListTripSeatsWithAvailabilityRow, 0, len(rows))
 	for _, s := range rows {
 		if s.IsReservable {
@@ -179,7 +179,7 @@ type bookingResponse struct {
 	HeldUntil        *string `json:"held_until,omitempty"`
 }
 
-// seatBookingError is a client-facing failure tied to one seat within a bulk booking request — carries the HTTP status the whole request should fail with, since one bad seat fails the entire (single-transaction) hold.
+// seatBookingError is a client-facing failure tied to one seat within a bulk booking request. It carries the HTTP status the whole request should fail with, since one bad seat fails the entire (single-transaction) hold.
 type seatBookingError struct {
 	status int
 	msg    string
@@ -369,7 +369,7 @@ func (h *BookingHandler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 }
 
 // ConfirmBooking finalizes a hold.
-// It fails if the hold already expired (the customer took longer than 5 minutes); the seat may since have been taken by someone else, so the client should re-search.
+// It fails if the hold already expired (the customer took longer than 5 minutes). The seat may since have been taken by someone else, so the client should re-search.
 func (h *BookingHandler) ConfirmBooking(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
