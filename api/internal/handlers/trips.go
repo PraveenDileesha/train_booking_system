@@ -57,6 +57,43 @@ func pad2(n int) string {
 	return strconv.Itoa(n)
 }
 
+// combineDateTime merges a separately-stored date and time of day into one instant.
+func combineDateTime(d pgtype.Date, t pgtype.Time) time.Time {
+	return d.Time.Add(time.Duration(t.Microseconds) * time.Microsecond)
+}
+
+// boardingWindow is how long before departure a trip shows as BOARDING rather than SCHEDULED.
+const boardingWindow = 15 * time.Minute
+
+// effectiveTripStatus computes a trip's current status from its departure and arrival instants, rather than from the stored column, which only ever holds SCHEDULED or CANCELLED.
+// CANCELLED is a terminal state an admin sets directly and is never overridden here.
+func effectiveTripStatus(stored generated.TripStatus, departure, arrival time.Time) generated.TripStatus {
+	if stored == generated.TripStatusCANCELLED {
+		return stored
+	}
+	now := time.Now()
+	switch {
+	case now.Before(departure.Add(-boardingWindow)):
+		return generated.TripStatusSCHEDULED
+	case now.Before(departure):
+		return generated.TripStatusBOARDING
+	case now.Before(arrival):
+		return generated.TripStatusDEPARTED
+	default:
+		return generated.TripStatusCOMPLETED
+	}
+}
+
+// hasDeparted reports whether a trip is no longer bookable because it has already left, arrived, or been cancelled.
+func hasDeparted(stored generated.TripStatus, departure, arrival time.Time) bool {
+	switch effectiveTripStatus(stored, departure, arrival) {
+	case generated.TripStatusDEPARTED, generated.TripStatusCOMPLETED, generated.TripStatusCANCELLED:
+		return true
+	default:
+		return false
+	}
+}
+
 type tripResponse struct {
 	ID             int32  `json:"id"`
 	RouteVersionID int32  `json:"route_version_id"`
@@ -76,7 +113,7 @@ func toTripResponse(t generated.Trip) tripResponse {
 		DepartureTime:  timeToString(t.DepartureTime),
 		ArrivalDate:    dateToString(t.ArrivalDate),
 		ArrivalTime:    timeToString(t.ArrivalTime),
-		Status:         string(t.Status),
+		Status:         string(effectiveTripStatus(t.Status, combineDateTime(t.DepartureDate, t.DepartureTime), combineDateTime(t.ArrivalDate, t.ArrivalTime))),
 	}
 }
 
@@ -262,7 +299,7 @@ func (h *TripHandler) ListTrips(w http.ResponseWriter, r *http.Request) {
 			"departure_time":   timeToString(t.DepartureTime),
 			"arrival_date":     dateToString(t.ArrivalDate),
 			"arrival_time":     timeToString(t.ArrivalTime),
-			"status":           t.Status,
+			"status":           effectiveTripStatus(t.Status, combineDateTime(t.DepartureDate, t.DepartureTime), combineDateTime(t.ArrivalDate, t.ArrivalTime)),
 			"route_id":         t.RouteID,
 			"route_name":       t.RouteName,
 		})

@@ -37,7 +37,7 @@ type Querier interface {
 	DeleteCoach(ctx context.Context, id int32) (int64, error)
 	DeleteRoute(ctx context.Context, id int32) (int64, error)
 	DeleteStation(ctx context.Context, id int32) (int64, error)
-	// Fails with a restrict_violation if any booking or unreserved ticket references this trip. Bookings RESTRICT trip_seats, and unreserved_tickets RESTRICTs trips directly.
+	// Fails with a restrict_violation if any booking or unreserved ticket references this trip. Bookings RESTRICT trip_seats and unreserved_tickets RESTRICTs trips directly.
 	DeleteTrip(ctx context.Context, id int32) (int64, error)
 	ExpireStaleHoldsForTripSeat(ctx context.Context, tripSeatID int32) error
 	GetActiveRouteVersion(ctx context.Context, routeID int32) (RouteVersion, error)
@@ -50,10 +50,11 @@ type Querier interface {
 	GetTrip(ctx context.Context, id int32) (Trip, error)
 	GetTripFare(ctx context.Context, arg GetTripFareParams) (TripFare, error)
 	// Includes route_version_id, used to resolve station sequences and distances.
+	// Includes the trip's departure and arrival timestamps and status, used to reject booking a seat on a trip that has already departed.
 	GetTripSeat(ctx context.Context, id int32) (GetTripSeatRow, error)
 	ListCoaches(ctx context.Context, arg ListCoachesParams) ([]ListCoachesRow, error)
 	ListDailyRevenue(ctx context.Context, dayLimit int32) ([]ListDailyRevenueRow, error)
-	// Joins a confirmed booking to the seat, coach, route, and trip it was made against, so the revenue log can show what was actually sold, not just a booking ID.
+	// Joins a confirmed booking to the seat, coach, route and trip it was made against, so the revenue log can show what was actually sold, not just a booking ID.
 	ListRevenueBookingsByDate(ctx context.Context, arg ListRevenueBookingsByDateParams) ([]ListRevenueBookingsByDateRow, error)
 	ListRoutes(ctx context.Context, arg ListRoutesParams) ([]Route, error)
 	ListSeatsByCoach(ctx context.Context, coachID int32) ([]Seat, error)
@@ -68,6 +69,7 @@ type Querier interface {
 	ListTripSeatsWithAvailability(ctx context.Context, arg ListTripSeatsWithAvailabilityParams) ([]ListTripSeatsWithAvailabilityRow, error)
 	ListTrips(ctx context.Context, arg ListTripsParams) ([]ListTripsRow, error)
 	// Matches by station pair, not route_id. A trip qualifies if its route passes through both stations in that order on the given date.
+	// Excludes a trip searched for today once its departure_time has already passed.
 	SearchTrips(ctx context.Context, arg SearchTripsParams) ([]SearchTripsRow, error)
 }
 

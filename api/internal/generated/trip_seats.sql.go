@@ -7,6 +7,8 @@ package generated
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createTripSeatsForCoaches = `-- name: CreateTripSeatsForCoaches :exec
@@ -28,7 +30,7 @@ func (q *Queries) CreateTripSeatsForCoaches(ctx context.Context, arg CreateTripS
 
 const getTripSeat = `-- name: GetTripSeat :one
 SELECT ts.id, ts.trip_id, ts.seat_id, s.seat_number, c.id AS coach_id, c.coach_name, c.class, c.is_reservable,
-       t.route_version_id
+       t.route_version_id, t.departure_date, t.departure_time, t.arrival_date, t.arrival_time, t.status AS trip_status
 FROM trip_seats ts
 JOIN seats s ON s.id = ts.seat_id
 JOIN coaches c ON c.id = s.coach_id
@@ -37,18 +39,24 @@ WHERE ts.id = $1
 `
 
 type GetTripSeatRow struct {
-	ID             int32      `json:"id"`
-	TripID         int32      `json:"trip_id"`
-	SeatID         int32      `json:"seat_id"`
-	SeatNumber     string     `json:"seat_number"`
-	CoachID        int32      `json:"coach_id"`
-	CoachName      string     `json:"coach_name"`
-	Class          CoachClass `json:"class"`
-	IsReservable   bool       `json:"is_reservable"`
-	RouteVersionID int32      `json:"route_version_id"`
+	ID             int32       `json:"id"`
+	TripID         int32       `json:"trip_id"`
+	SeatID         int32       `json:"seat_id"`
+	SeatNumber     string      `json:"seat_number"`
+	CoachID        int32       `json:"coach_id"`
+	CoachName      string      `json:"coach_name"`
+	Class          CoachClass  `json:"class"`
+	IsReservable   bool        `json:"is_reservable"`
+	RouteVersionID int32       `json:"route_version_id"`
+	DepartureDate  pgtype.Date `json:"departure_date"`
+	DepartureTime  pgtype.Time `json:"departure_time"`
+	ArrivalDate    pgtype.Date `json:"arrival_date"`
+	ArrivalTime    pgtype.Time `json:"arrival_time"`
+	TripStatus     TripStatus  `json:"trip_status"`
 }
 
 // Includes route_version_id, used to resolve station sequences and distances.
+// Includes the trip's departure and arrival timestamps and status, used to reject booking a seat on a trip that has already departed.
 func (q *Queries) GetTripSeat(ctx context.Context, id int32) (GetTripSeatRow, error) {
 	row := q.db.QueryRow(ctx, getTripSeat, id)
 	var i GetTripSeatRow
@@ -62,6 +70,11 @@ func (q *Queries) GetTripSeat(ctx context.Context, id int32) (GetTripSeatRow, er
 		&i.Class,
 		&i.IsReservable,
 		&i.RouteVersionID,
+		&i.DepartureDate,
+		&i.DepartureTime,
+		&i.ArrivalDate,
+		&i.ArrivalTime,
+		&i.TripStatus,
 	)
 	return i, err
 }

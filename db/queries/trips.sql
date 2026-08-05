@@ -22,6 +22,7 @@ SELECT COUNT(*) FROM trips;
 
 -- name: SearchTrips :many
 -- Matches by station pair, not route_id. A trip qualifies if its route passes through both stations in that order on the given date.
+-- Excludes a trip searched for today once its departure_time has already passed.
 SELECT t.id, t.route_version_id, t.departure_date, t.departure_time, t.status, t.arrival_date, t.arrival_time,
        r.name AS route_name
 FROM trips t
@@ -33,6 +34,7 @@ JOIN route_stations rs_end ON rs_end.route_version_id = t.route_version_id
     AND rs_end.station_id = sqlc.arg(end_station_id)
 WHERE t.departure_date = sqlc.arg(departure_date)
   AND rs_start.stop_sequence < rs_end.stop_sequence
+  AND (t.departure_date != CURRENT_DATE OR t.departure_time > CURRENT_TIME)
 ORDER BY t.departure_time
 LIMIT sqlc.arg(row_limit) OFFSET sqlc.arg(row_offset);
 
@@ -46,7 +48,8 @@ JOIN route_stations rs_start ON rs_start.route_version_id = t.route_version_id
 JOIN route_stations rs_end ON rs_end.route_version_id = t.route_version_id
     AND rs_end.station_id = sqlc.arg(end_station_id)
 WHERE t.departure_date = sqlc.arg(departure_date)
-  AND rs_start.stop_sequence < rs_end.stop_sequence;
+  AND rs_start.stop_sequence < rs_end.stop_sequence
+  AND (t.departure_date != CURRENT_DATE OR t.departure_time > CURRENT_TIME);
 
 -- name: DeleteTrip :execrows
 -- Fails with a restrict_violation if any booking or unreserved ticket references this trip. Bookings RESTRICT trip_seats and unreserved_tickets RESTRICTs trips directly.

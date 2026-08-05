@@ -78,6 +78,10 @@ func (h *CounterHandler) IssueUnreservedTicket(w http.ResponseWriter, r *http.Re
 		http.Error(w, "failed to load trip", http.StatusInternalServerError)
 		return
 	}
+	if hasDeparted(trip.Status, combineDateTime(trip.DepartureDate, trip.DepartureTime), combineDateTime(trip.ArrivalDate, trip.ArrivalTime)) {
+		http.Error(w, "this trip has already departed", http.StatusConflict)
+		return
+	}
 
 	stops, err := stopsByStation(ctx, h.Queries, trip.RouteVersionID)
 	if err != nil {

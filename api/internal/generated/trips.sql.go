@@ -22,6 +22,7 @@ JOIN route_stations rs_end ON rs_end.route_version_id = t.route_version_id
     AND rs_end.station_id = $2
 WHERE t.departure_date = $3
   AND rs_start.stop_sequence < rs_end.stop_sequence
+  AND (t.departure_date != CURRENT_DATE OR t.departure_time > CURRENT_TIME)
 `
 
 type CountSearchTripsParams struct {
@@ -90,7 +91,7 @@ DELETE FROM trips
 WHERE id = $1
 `
 
-// Fails with a restrict_violation if any booking or unreserved ticket references this trip. Bookings RESTRICT trip_seats, and unreserved_tickets RESTRICTs trips directly.
+// Fails with a restrict_violation if any booking or unreserved ticket references this trip. Bookings RESTRICT trip_seats and unreserved_tickets RESTRICTs trips directly.
 func (q *Queries) DeleteTrip(ctx context.Context, id int32) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteTrip, id)
 	if err != nil {
@@ -189,6 +190,7 @@ JOIN route_stations rs_end ON rs_end.route_version_id = t.route_version_id
     AND rs_end.station_id = $2
 WHERE t.departure_date = $3
   AND rs_start.stop_sequence < rs_end.stop_sequence
+  AND (t.departure_date != CURRENT_DATE OR t.departure_time > CURRENT_TIME)
 ORDER BY t.departure_time
 LIMIT $5 OFFSET $4
 `
@@ -213,6 +215,7 @@ type SearchTripsRow struct {
 }
 
 // Matches by station pair, not route_id. A trip qualifies if its route passes through both stations in that order on the given date.
+// Excludes a trip searched for today once its departure_time has already passed.
 func (q *Queries) SearchTrips(ctx context.Context, arg SearchTripsParams) ([]SearchTripsRow, error) {
 	rows, err := q.db.Query(ctx, searchTrips,
 		arg.StartStationID,

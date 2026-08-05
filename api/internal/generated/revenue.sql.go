@@ -126,7 +126,7 @@ type ListRevenueBookingsByDateRow struct {
 	EndStationName   string           `json:"end_station_name"`
 }
 
-// Joins a confirmed booking to the seat, coach, route, and trip it was made against, so the revenue log can show what was actually sold, not just a booking ID.
+// Joins a confirmed booking to the seat, coach, route and trip it was made against, so the revenue log can show what was actually sold, not just a booking ID.
 func (q *Queries) ListRevenueBookingsByDate(ctx context.Context, arg ListRevenueBookingsByDateParams) ([]ListRevenueBookingsByDateRow, error) {
 	rows, err := q.db.Query(ctx, listRevenueBookingsByDate, arg.Day, arg.RowOffset, arg.RowLimit)
 	if err != nil {

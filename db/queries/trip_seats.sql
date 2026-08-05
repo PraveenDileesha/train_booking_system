@@ -30,8 +30,9 @@ ORDER BY tc.position, s.id;
 
 -- name: GetTripSeat :one
 -- Includes route_version_id, used to resolve station sequences and distances.
+-- Includes the trip's departure and arrival timestamps and status, used to reject booking a seat on a trip that has already departed.
 SELECT ts.id, ts.trip_id, ts.seat_id, s.seat_number, c.id AS coach_id, c.coach_name, c.class, c.is_reservable,
-       t.route_version_id
+       t.route_version_id, t.departure_date, t.departure_time, t.arrival_date, t.arrival_time, t.status AS trip_status
 FROM trip_seats ts
 JOIN seats s ON s.id = ts.seat_id
 JOIN coaches c ON c.id = s.coach_id
