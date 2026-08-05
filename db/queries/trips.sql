@@ -49,6 +49,6 @@ WHERE t.departure_date = sqlc.arg(departure_date)
   AND rs_start.stop_sequence < rs_end.stop_sequence;
 
 -- name: DeleteTrip :execrows
--- Fails with a restrict_violation if any booking or unreserved ticket references this trip. Bookings RESTRICT trip_seats, and unreserved_tickets RESTRICTs trips directly.
+-- Fails with a restrict_violation if any booking or unreserved ticket references this trip. Bookings RESTRICT trip_seats and unreserved_tickets RESTRICTs trips directly.
 DELETE FROM trips
 WHERE id = $1;

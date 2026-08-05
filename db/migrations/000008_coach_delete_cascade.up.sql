@@ -1,5 +1,4 @@
--- seats are a coach's own composition data (auto-created alongside the
--- coach), not usage of it, so deleting a coach cascades to its seats.
+-- seats are a coach's own composition data (auto-created alongside the coach), not usage of it, so deleting a coach cascades to its seats.
 -- trip_coaches.coach_id stays ON DELETE RESTRICT. A coach actually attached to a trip still cannot be deleted.
 
 ALTER TABLE seats

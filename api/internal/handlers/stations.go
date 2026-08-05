@@ -13,6 +13,7 @@ import (
 	"github.com/PraveenDileesha/train_booking_system/internal/generated"
 )
 
+// StationHandler serves station creation, listing and deletion endpoints.
 type StationHandler struct {
 	Queries *generated.Queries
 }

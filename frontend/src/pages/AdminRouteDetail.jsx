@@ -199,10 +199,8 @@ export default function AdminRouteDetail() {
         {trackStops.length >= 2 && (
           <div className="panel">
             <h2>Route preview</h2>
-            {/* Segment-distance labels between every pair of dots only stay
-                legible up to a moderate stop count — past that they're just
-                overlapping clutter, so drop them and let the station labels
-                and overall span speak for themselves. */}
+            {/* Segment-distance labels between every pair of dots only stay legible up to a moderate stop count. */}
+            {/* Past that they're just overlapping clutter, so drop them and let the station labels and overall span speak for themselves. */}
             {trackStops.length > 20 && (
               <p style={{ color: '#889', fontSize: '0.8rem', marginTop: '-0.5rem', marginBottom: '0.75rem' }}>
                 {trackStops.length} stops over {maxDistance.toFixed(1)} km. Scroll to see the full line.

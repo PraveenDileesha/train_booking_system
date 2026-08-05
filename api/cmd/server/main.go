@@ -74,7 +74,7 @@ func main() {
 	mux.HandleFunc("GET /api/v1/admin/revenue/bookings", revenueHandler.ListRevenueBookingsByDate)
 
 	// Trip detail, search and booking are shared between the admin and customer-facing UIs, so they live outside /admin.
-	// The trip, counter and booking endpoints below are the public surface and get rate limited.
+	// The trip, booking and counter endpoints below are the public surface and get rate limited.
 	mux.Handle("GET /api/v1/trips", publicLimiter.Limit(tripHandler.SearchTrips))
 	mux.Handle("GET /api/v1/trips/{id}", publicLimiter.Limit(tripHandler.GetTrip))
 	mux.Handle("GET /api/v1/trips/{id}/seats", publicLimiter.Limit(bookingHandler.ListAvailableSeats))

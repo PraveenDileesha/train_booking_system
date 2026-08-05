@@ -147,8 +147,7 @@ export function PageHeading({ title, subtitle, extra }) {
   );
 }
 
-// Shared page, next, and prev control for every paginated admin table.
-// Which page numbers to render as buttons. Always first, last, and a window of 1 neighbor around the current page, with "…" filling gaps so a 50-page list doesn't render 50 buttons.
+// Which page numbers to render as buttons. Always first, last and a window of 1 neighbor around the current page, with "…" filling gaps so a 50-page list doesn't render 50 buttons.
 function pageWindow(current, total) {
   const keep = new Set([1, total, current - 1, current, current + 1]);
   const pages = [...keep].filter((p) => p >= 1 && p <= total).sort((a, b) => a - b);
@@ -163,6 +162,7 @@ function pageWindow(current, total) {
   return withGaps;
 }
 
+// Shared page, next and prev control for every paginated admin table.
 export function Pagination({ page, totalPages, total, onChange }) {
   if (totalPages <= 1) return null;
   return (

@@ -10,7 +10,7 @@ const (
 	maxPageSize     = 200
 )
 
-// parsePagination reads the "page" and "page_size" query params. page defaults to 1, and page_size defaults to defaultPageSize and is clamped to [1, maxPageSize].
+// parsePagination reads the "page" and "page_size" query params. page defaults to 1 and page_size defaults to defaultPageSize and is clamped to [1, maxPageSize].
 func parsePagination(r *http.Request) (page, pageSize int) {
 	page = 1
 	if v, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && v > 0 {

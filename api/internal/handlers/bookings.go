@@ -23,9 +23,11 @@ import (
 
 const holdDuration = 5 * time.Minute
 
-// maxSeatsPerBooking caps how many seats one customer can hold in a single request. Enforced here, not just in the UI, since the API is the actual trust boundary.
+// maxSeatsPerBooking caps how many seats one customer can hold in a single request.
+// Enforced here, not just in the UI, since the API is the actual trust boundary.
 const maxSeatsPerBooking = 5
 
+// BookingHandler serves the reserved-seat booking and seat-availability endpoints.
 type BookingHandler struct {
 	Pool    *pgxpool.Pool
 	Queries *generated.Queries
@@ -179,7 +181,8 @@ type bookingResponse struct {
 	HeldUntil        *string `json:"held_until,omitempty"`
 }
 
-// seatBookingError is a client-facing failure tied to one seat within a bulk booking request. It carries the HTTP status the whole request should fail with, since one bad seat fails the entire (single-transaction) hold.
+// seatBookingError is a client-facing failure tied to one seat within a bulk booking request.
+// It carries the HTTP status the whole request should fail with, since one bad seat fails the entire (single-transaction) hold.
 type seatBookingError struct {
 	status int
 	msg    string
@@ -369,7 +372,8 @@ func (h *BookingHandler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 }
 
 // ConfirmBooking finalizes a hold.
-// It fails if the hold already expired (the customer took longer than 5 minutes). The seat may since have been taken by someone else, so the client should re-search.
+// It fails if the hold already expired (the customer took longer than 5 minutes).
+// The seat may since have been taken by someone else, so the client should re-search.
 func (h *BookingHandler) ConfirmBooking(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {

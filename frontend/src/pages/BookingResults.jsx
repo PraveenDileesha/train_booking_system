@@ -39,6 +39,7 @@ function groupByRow(seats) {
   return [...rows.entries()].sort((a, b) => a[0] - b[0]);
 }
 
+// Mirrors roundToNearest5 in api/internal/handlers/bookings.go, so the price shown while picking a seat matches what the booking actually charges.
 function fareForSeat(seat, fares, distanceKm) {
   const rate = fares.find((f) => f.class === seat.class && f.is_reservable);
   if (!rate) return null;

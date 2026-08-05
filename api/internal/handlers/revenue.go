@@ -17,6 +17,7 @@ const (
 	maxRevenueDays     = 365
 )
 
+// RevenueHandler serves the admin revenue reporting endpoints.
 type RevenueHandler struct {
 	Queries *generated.Queries
 }

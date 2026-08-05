@@ -14,12 +14,14 @@ import (
 	"github.com/PraveenDileesha/train_booking_system/internal/generated"
 )
 
+// CoachHandler serves coach creation, listing and seat-generation endpoints.
 type CoachHandler struct {
 	Pool    *pgxpool.Pool
 	Queries *generated.Queries
 }
 
-// seatLetters returns the seat letters for one row of the given class, following real Sri Lanka Railways carriage layouts. First and Second class run 2+2 (four seats per row) and Third class runs 3+2 (five seats per row).
+// seatLetters returns the seat letters for one row of the given class, following real Sri Lanka Railways carriage layouts.
+// First and Second class run 2+2 (four seats per row) and Third class runs 3+2 (five seats per row).
 func seatLetters(class generated.CoachClass) []string {
 	switch class {
 	case generated.CoachClassTHIRD:

@@ -10,7 +10,7 @@ import (
 )
 
 // New initializes and returns a new PostgreSQL connection pool configured via environment variables.
-// It requires DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, and DB_NAME to be set.
+// It requires DB_HOST, DB_PORT, DB_USER, DB_PASSWORD and DB_NAME to be set.
 // The caller is responsible for managing the lifecycle of the returned pool (e.g., calling Close).
 func New(ctx context.Context) (*pgxpool.Pool, error) {
 	dsn := fmt.Sprintf(

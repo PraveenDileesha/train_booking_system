@@ -18,6 +18,7 @@ import (
 	"github.com/PraveenDileesha/train_booking_system/internal/generated"
 )
 
+// RouteHandler serves route creation, versioning and listing endpoints.
 type RouteHandler struct {
 	Pool    *pgxpool.Pool
 	Queries *generated.Queries
@@ -50,6 +51,9 @@ func numericToFloat64(n pgtype.Numeric) (float64, error) {
 	return f8.Float64, nil
 }
 
+// nextVersionNo computes the next x.y version number after current, rolling from x.9 to (x+1).0.
+// The 1e-9 epsilon on both the floor and the round guards against floating-point representations landing just under a whole number, which would otherwise floor or round down to the wrong major or minor value.
+// The rollover checks minor >= 9 rather than == 10 for the same reason, since floating-point minor could land at 8.9999999 instead of exactly 9.
 func nextVersionNo(current pgtype.Numeric) (pgtype.Numeric, error) {
 	f, err := numericToFloat64(current)
 	if err != nil {
@@ -91,7 +95,7 @@ func toRouteVersionResponse(v generated.RouteVersion) (routeVersionResponse, err
 	}, nil
 }
 
-// CreateRoute creates a route, its first version, and that version's stations.
+// CreateRoute creates a route, its first version and that version's stations.
 func (h *RouteHandler) CreateRoute(w http.ResponseWriter, r *http.Request) {
 	var req createRouteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

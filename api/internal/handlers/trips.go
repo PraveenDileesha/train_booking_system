@@ -16,6 +16,7 @@ import (
 	"github.com/PraveenDileesha/train_booking_system/internal/generated"
 )
 
+// TripHandler serves trip scheduling, search and detail endpoints.
 type TripHandler struct {
 	Pool    *pgxpool.Pool
 	Queries *generated.Queries
@@ -95,7 +96,7 @@ type createTripRequest struct {
 	Fares         []createTripFareInput `json:"fares"`
 }
 
-// CreateTrip schedules a trip on the route's currently active version, attaches the admin-chosen coaches (populating trip_seats for each of their seats), and records the per-class fare rates for that trip.
+// CreateTrip schedules a trip on the route's currently active version, attaches the admin-chosen coaches (populating trip_seats for each of their seats) and records the per-class fare rates for that trip.
 func (h *TripHandler) CreateTrip(w http.ResponseWriter, r *http.Request) {
 	var req createTripRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -272,7 +273,8 @@ func (h *TripHandler) ListTrips(w http.ResponseWriter, r *http.Request) {
 }
 
 // DeleteTrip removes a trip that has no activity against it.
-// Fails with a 409 if any booking or unreserved ticket references it. Bookings RESTRICT trip_seats, and unreserved_tickets RESTRICTs trips directly.
+// Fails with a 409 if any booking or unreserved ticket references it.
+// Bookings RESTRICT trip_seats and unreserved_tickets RESTRICTs trips directly.
 func (h *TripHandler) DeleteTrip(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
@@ -298,7 +300,7 @@ func (h *TripHandler) DeleteTrip(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// GetTrip returns full detail for a trip, including its route's stations (with sequence and distance, needed by the frontend to compute legs), attached coaches, and fare rates.
+// GetTrip returns full detail for a trip, including its route's stations (with sequence and distance, needed by the frontend to compute legs), attached coaches and fare rates.
 // Used by both the admin trip page and the customer booking flow.
 func (h *TripHandler) GetTrip(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
