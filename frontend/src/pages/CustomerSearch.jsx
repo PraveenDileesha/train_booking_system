@@ -12,7 +12,7 @@ export default function CustomerSearch() {
   const [toId, setToId] = useState('');
   const [date, setDate] = useState(todayStr());
   const [error, setError] = useState(null);
-  const [search, setSearch] = useState(null); // { fromId, toId, date } once submitted
+  const [search, setSearch] = useState(null); // { fromId, toId, date } 
 
   useEffect(() => {
     api.listAllStations().then((data) => setStations(data.items)).catch((e) => setError(e.message));
@@ -30,6 +30,14 @@ export default function CustomerSearch() {
       return;
     }
     setSearch({ fromId, toId, date });
+  }
+
+  function resetToSearch() {
+    setFromId('');
+    setToId('');
+    setDate(todayStr());
+    setError(null);
+    setSearch(null);
   }
 
   return (
@@ -71,7 +79,7 @@ export default function CustomerSearch() {
 
         {search && (
           <div style={{ width: '100%', maxWidth: '840px' }}>
-            <TripResults fromId={search.fromId} toId={search.toId} date={search.date} />
+            <TripResults fromId={search.fromId} toId={search.toId} date={search.date} onBookingComplete={resetToSearch} />
           </div>
         )}
       </main>

@@ -152,6 +152,31 @@ function HoldPanel({ bookings, onConfirmed, onExpired }) {
   );
 }
 
+function BookingConfirmationModal({ bookings, onClose }) {
+  const totalFare = bookings.reduce((sum, b) => sum + Number(b.fare), 0);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <h2>Booking confirmed</h2>
+        {bookings.map((b) => (
+          <div className="modal-receipt-row" key={b.id}>
+            <span>Reference</span>
+            <strong>{b.booking_reference}</strong>
+          </div>
+        ))}
+        <div className="modal-receipt-total">
+          <span>Total fare</span>
+          <span>Rs {totalFare}</span>
+        </div>
+        <button className="btn btn-primary" style={{ marginTop: '1.5rem', width: '100%' }} onClick={onClose}>
+          Close
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function PassengerForm({ onSubmit, submitting, error }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -181,7 +206,7 @@ function PassengerForm({ onSubmit, submitting, error }) {
 }
 
 // Renders inline below the search form on the same screen. No route change, so a new search just updates this section in place rather than navigating the customer to a different page.
-export function TripResults({ fromId, toId, date }) {
+export function TripResults({ fromId, toId, date, onBookingComplete }) {
   const [trips, setTrips] = useState([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -320,16 +345,9 @@ export function TripResults({ fromId, toId, date }) {
 
       {error && <div className="error-banner">{error}</div>}
 
-      {confirmedBookings ? (
-        <div className="panel" style={{ borderColor: 'var(--accent)' }}>
-          <h2>Booking confirmed 🎉</h2>
-          <p>
-            Reference{confirmedBookings.length > 1 ? 's' : ''}{' '}
-            <strong>{confirmedBookings.map((b) => b.booking_reference).join(', ')}</strong>
-            {' · '}Total fare Rs {confirmedBookings.reduce((sum, b) => sum + Number(b.fare), 0)}
-          </p>
-        </div>
-      ) : null}
+      {confirmedBookings && (
+        <BookingConfirmationModal bookings={confirmedBookings} onClose={onBookingComplete} />
+      )}
 
       {loading ? (
         <p className="empty-state">Searching…</p>
