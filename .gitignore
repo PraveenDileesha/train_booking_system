@@ -15,5 +15,5 @@ frontend/.pnpm-store/
 # Frontend build output
 frontend/dist/
 
-# Claude Code local settings
-.claude/settings.local.json
+# Claude Code local settings and plugin configuration, dev tooling only, not part of the shipped application
+.claude/
