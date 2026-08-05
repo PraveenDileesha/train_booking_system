@@ -79,6 +79,7 @@ export const api = {
   createBooking: (booking) =>
     publicRequest('/bookings', { method: 'POST', body: JSON.stringify(booking) }),
   confirmBooking: (id) => publicRequest(`/bookings/${id}/confirm`, { method: 'POST' }),
+  cancelBooking: (id) => publicRequest(`/bookings/${id}/cancel`, { method: 'POST' }),
   getBooking: (id) => publicRequest(`/bookings/${id}`),
 
   issueUnreservedTicket: (ticket) =>

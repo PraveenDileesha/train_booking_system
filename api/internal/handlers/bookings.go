@@ -417,6 +417,29 @@ func (h *BookingHandler) ConfirmBooking(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+// CancelBooking releases a hold before it naturally expires or cancels an already-confirmed booking.
+// The seat becomes bookable by someone else immediately, rather than waiting out held_until.
+func (h *BookingHandler) CancelBooking(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		http.Error(w, "invalid booking id", http.StatusBadRequest)
+		return
+	}
+
+	rowsAffected, err := h.Queries.CancelBooking(r.Context(), int32(id))
+	if err != nil {
+		log.Printf("CancelBooking error: %v (%T)", err, err)
+		http.Error(w, "failed to cancel booking", http.StatusInternalServerError)
+		return
+	}
+	if rowsAffected == 0 {
+		http.Error(w, "booking not found or already cancelled or expired", http.StatusConflict)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // GetBooking returns a single booking by ID.
 func (h *BookingHandler) GetBooking(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))

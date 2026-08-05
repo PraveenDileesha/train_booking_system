@@ -46,7 +46,7 @@ function fareForSeat(seat, fares, distanceKm) {
   return Math.round((distanceKm * Number(rate.rate_per_km)) / 5) * 5;
 }
 
-function SeatMap({ seatData, onToggle, selectedSeatIds }) {
+function SeatMap({ seatData, onToggle, selectedSeatIds, locked }) {
   const coaches = useMemo(() => groupByCoach(seatData.seats), [seatData]);
 
   return (
@@ -79,8 +79,8 @@ function SeatMap({ seatData, onToggle, selectedSeatIds }) {
                             type="button"
                             key={letter}
                             className={cls}
-                            disabled={!seat.is_available}
-                            title={seat.is_available ? `Rs ${fare}` : 'Not available for this leg'}
+                            disabled={!seat.is_available || locked}
+                            title={locked ? 'Confirm or wait for your current hold to expire first' : seat.is_available ? `Rs ${fare}` : 'Not available for this leg'}
                             onClick={() => onToggle(seat, fare)}
                           >
                             {seat.seat_number}
@@ -105,11 +105,12 @@ function SeatMap({ seatData, onToggle, selectedSeatIds }) {
 }
 
 // bookings holds the array of PENDING bookings returned by one createBooking call. Held together and confirmed together, since they were created in the same transaction and share a hold window.
-function HoldPanel({ bookings, onConfirmed, onExpired }) {
+function HoldPanel({ bookings, onConfirmed, onExpired, onCancelled }) {
   const [secondsLeft, setSecondsLeft] = useState(() =>
     Math.max(0, Math.round((new Date(bookings[0].held_until).getTime() - Date.now()) / 1000))
   );
   const [confirming, setConfirming] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -134,6 +135,19 @@ function HoldPanel({ bookings, onConfirmed, onExpired }) {
     }
   }
 
+  async function handleCancel() {
+    setCancelling(true);
+    setError(null);
+    try {
+      await Promise.all(bookings.map((b) => api.cancelBooking(b.id)));
+      onCancelled(bookings.map((b) => b.trip_seat_id));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   const mm = String(Math.floor(secondsLeft / 60)).padStart(2, '0');
   const ss = String(secondsLeft % 60).padStart(2, '0');
   const totalFare = bookings.reduce((sum, b) => sum + Number(b.fare), 0);
@@ -146,9 +160,14 @@ function HoldPanel({ bookings, onConfirmed, onExpired }) {
         {' · '}Reference{bookings.length > 1 ? 's' : ''} {bookings.map((b) => b.booking_reference).join(', ')}
       </p>
       {error && <div className="error-banner">{error}</div>}
-      <button className="btn btn-primary" onClick={handleConfirm} disabled={confirming}>
-        {confirming ? 'Confirming…' : 'Confirm booking'}
-      </button>
+      <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <button className="btn btn-primary" onClick={handleConfirm} disabled={confirming || cancelling}>
+          {confirming ? 'Confirming…' : 'Confirm booking'}
+        </button>
+        <button className="btn btn-ghost" onClick={handleCancel} disabled={confirming || cancelling}>
+          {cancelling ? 'Cancelling…' : 'Cancel hold'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -254,13 +273,23 @@ export function TripResults({ fromId, toId, date, onBookingComplete }) {
     setBookingError(null);
   }
 
+  // True once a hold has been placed and is still waiting on confirmation or expiry.
+  // Seat selection and switching trips are locked while this is true, since either action would otherwise discard the only reference the customer has to that hold.
+  const holdActive = bookings !== null && !confirmedBookings;
+
   async function toggleTrip(tripId) {
     if (expandedTripId === tripId) {
       setExpandedTripId(null);
       return;
     }
+    if (holdActive && selectedTripId !== tripId) {
+      setError('Confirm or wait for your current seat hold to expire before viewing another trip.');
+      return;
+    }
     setExpandedTripId(tripId);
-    resetSelection();
+    if (selectedTripId !== tripId) {
+      resetSelection();
+    }
     if (seatDataByTrip[tripId]) return;
 
     setSeatLoading(true);
@@ -275,8 +304,7 @@ export function TripResults({ fromId, toId, date, onBookingComplete }) {
   }
 
   function handleToggleSeat(tripId, seat, fare) {
-    setBookings(null);
-    setConfirmedBookings(null);
+    if (holdActive) return;
     setBookingError(null);
     setSeatLimitNotice(null);
 
@@ -328,9 +356,34 @@ export function TripResults({ fromId, toId, date, onBookingComplete }) {
     }
   }
 
+  // Marks the given seats as available again on the currently selected trip's seat map, undoing the optimistic update made when they were held.
+  function markSeatsAvailable(tripSeatIds) {
+    const freedSeatIds = new Set(tripSeatIds);
+    setSeatDataByTrip((prev) => {
+      const data = prev[selectedTripId];
+      if (!data) return prev;
+      return {
+        ...prev,
+        [selectedTripId]: {
+          ...data,
+          seats: data.seats.map((s) =>
+            freedSeatIds.has(s.trip_seat_id) ? { ...s, is_available: true } : s
+          ),
+        },
+      };
+    });
+  }
+
   function handleExpired() {
+    markSeatsAvailable(selectedSeats.map((s) => s.seat.trip_seat_id));
     setBookings(null);
     setBookingError('Your hold expired. Please select seats again.');
+    setSelectedSeats([]);
+  }
+
+  function handleCancelled(tripSeatIds) {
+    markSeatsAvailable(tripSeatIds);
+    setBookings(null);
     setSelectedSeats([]);
   }
 
@@ -379,6 +432,7 @@ export function TripResults({ fromId, toId, date, onBookingComplete }) {
                       seatData={seatDataByTrip[trip.id]}
                       selectedSeatIds={selectedTripId === trip.id ? selectedSeatIds : new Set()}
                       onToggle={(seat, fare) => handleToggleSeat(trip.id, seat, fare)}
+                      locked={holdActive && selectedTripId === trip.id}
                     />
                   )
                 ) : null}
@@ -404,6 +458,7 @@ export function TripResults({ fromId, toId, date, onBookingComplete }) {
                       bookings={bookings}
                       onConfirmed={(b) => setConfirmedBookings(b)}
                       onExpired={handleExpired}
+                      onCancelled={handleCancelled}
                     />
                   </div>
                 )}

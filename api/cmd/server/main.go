@@ -82,6 +82,7 @@ func main() {
 	mux.Handle("POST /api/v1/bookings", publicLimiter.Limit(bookingHandler.CreateBooking))
 	mux.Handle("GET /api/v1/bookings/{id}", publicLimiter.Limit(bookingHandler.GetBooking))
 	mux.Handle("POST /api/v1/bookings/{id}/confirm", publicLimiter.Limit(bookingHandler.ConfirmBooking))
+	mux.Handle("POST /api/v1/bookings/{id}/cancel", publicLimiter.Limit(bookingHandler.CancelBooking))
 
 	mux.Handle("POST /api/v1/counter/tickets", publicLimiter.Limit(counterHandler.IssueUnreservedTicket))
 
