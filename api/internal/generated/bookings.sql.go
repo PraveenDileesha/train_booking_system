@@ -28,13 +28,13 @@ func (q *Queries) CancelBooking(ctx context.Context, id int32) (int64, error) {
 
 const confirmBooking = `-- name: ConfirmBooking :one
 UPDATE bookings
-SET status = 'CONFIRMED', held_until = NULL
+SET status = 'CONFIRMED', held_until = NULL, confirmed_at = now()
 WHERE id = $1
   AND status = 'PENDING'
   AND held_until >= now()
 RETURNING id, passenger_id, trip_seat_id, start_station_id, end_station_id,
           start_sequence, end_sequence, fare, status, booking_reference,
-          booking_timestamp, held_until
+          booking_timestamp, held_until, confirmed_at
 `
 
 type ConfirmBookingRow struct {
@@ -50,6 +50,7 @@ type ConfirmBookingRow struct {
 	BookingReference string           `json:"booking_reference"`
 	BookingTimestamp pgtype.Timestamp `json:"booking_timestamp"`
 	HeldUntil        pgtype.Timestamp `json:"held_until"`
+	ConfirmedAt      pgtype.Timestamp `json:"confirmed_at"`
 }
 
 func (q *Queries) ConfirmBooking(ctx context.Context, id int32) (ConfirmBookingRow, error) {
@@ -68,6 +69,7 @@ func (q *Queries) ConfirmBooking(ctx context.Context, id int32) (ConfirmBookingR
 		&i.BookingReference,
 		&i.BookingTimestamp,
 		&i.HeldUntil,
+		&i.ConfirmedAt,
 	)
 	return i, err
 }

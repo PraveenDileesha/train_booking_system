@@ -157,6 +157,7 @@ type Booking struct {
 	BookingTimestamp pgtype.Timestamp          `json:"booking_timestamp"`
 	Seg              pgtype.Range[pgtype.Int4] `json:"seg"`
 	HeldUntil        pgtype.Timestamp          `json:"held_until"`
+	ConfirmedAt      pgtype.Timestamp          `json:"confirmed_at"`
 }
 
 type Coach struct {

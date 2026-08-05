@@ -6,12 +6,15 @@ package generated
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
 	CancelBooking(ctx context.Context, id int32) (int64, error)
 	ConfirmBooking(ctx context.Context, id int32) (ConfirmBookingRow, error)
 	CountCoaches(ctx context.Context) (int64, error)
+	CountRevenueBookingsByDate(ctx context.Context, day pgtype.Timestamp) (int64, error)
 	CountRoutes(ctx context.Context) (int64, error)
 	CountSearchTrips(ctx context.Context, arg CountSearchTripsParams) (int64, error)
 	CountStations(ctx context.Context) (int64, error)
@@ -34,7 +37,7 @@ type Querier interface {
 	DeleteCoach(ctx context.Context, id int32) (int64, error)
 	DeleteRoute(ctx context.Context, id int32) (int64, error)
 	DeleteStation(ctx context.Context, id int32) (int64, error)
-	// Fails with a restrict_violation if any booking or unreserved ticket references this trip: bookings RESTRICT trip_seats, and unreserved_tickets RESTRICTs trips directly.
+	// Fails with a restrict_violation if any booking or unreserved ticket references this trip. Bookings RESTRICT trip_seats, and unreserved_tickets RESTRICTs trips directly.
 	DeleteTrip(ctx context.Context, id int32) (int64, error)
 	ExpireStaleHoldsForTripSeat(ctx context.Context, tripSeatID int32) error
 	GetActiveRouteVersion(ctx context.Context, routeID int32) (RouteVersion, error)
@@ -43,11 +46,15 @@ type Querier interface {
 	GetRoute(ctx context.Context, id int32) (Route, error)
 	GetRouteVersionStations(ctx context.Context, routeVersionID int32) ([]GetRouteVersionStationsRow, error)
 	GetStation(ctx context.Context, id int32) (Station, error)
+	GetTodayRevenue(ctx context.Context) (GetTodayRevenueRow, error)
 	GetTrip(ctx context.Context, id int32) (Trip, error)
 	GetTripFare(ctx context.Context, arg GetTripFareParams) (TripFare, error)
 	// Includes route_version_id, used to resolve station sequences and distances.
 	GetTripSeat(ctx context.Context, id int32) (GetTripSeatRow, error)
 	ListCoaches(ctx context.Context, arg ListCoachesParams) ([]ListCoachesRow, error)
+	ListDailyRevenue(ctx context.Context, dayLimit int32) ([]ListDailyRevenueRow, error)
+	// Joins a confirmed booking to the seat, coach, route, and trip it was made against, so the revenue log can show what was actually sold, not just a booking ID.
+	ListRevenueBookingsByDate(ctx context.Context, arg ListRevenueBookingsByDateParams) ([]ListRevenueBookingsByDateRow, error)
 	ListRoutes(ctx context.Context, arg ListRoutesParams) ([]Route, error)
 	ListSeatsByCoach(ctx context.Context, coachID int32) ([]Seat, error)
 	// Numeric ID order for the admin table.
@@ -60,7 +67,7 @@ type Querier interface {
 	// is_available is false only for a CONFIRMED booking or a live (unexpired) PENDING hold whose range overlaps [start_sequence, end_sequence).
 	ListTripSeatsWithAvailability(ctx context.Context, arg ListTripSeatsWithAvailabilityParams) ([]ListTripSeatsWithAvailabilityRow, error)
 	ListTrips(ctx context.Context, arg ListTripsParams) ([]ListTripsRow, error)
-	// Matches by station pair, not route_id: a trip qualifies if its route passes through both stations in that order on the given date.
+	// Matches by station pair, not route_id. A trip qualifies if its route passes through both stations in that order on the given date.
 	SearchTrips(ctx context.Context, arg SearchTripsParams) ([]SearchTripsRow, error)
 }
 

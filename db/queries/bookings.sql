@@ -17,13 +17,13 @@ RETURNING id, passenger_id, trip_seat_id, start_station_id, end_station_id,
 
 -- name: ConfirmBooking :one
 UPDATE bookings
-SET status = 'CONFIRMED', held_until = NULL
+SET status = 'CONFIRMED', held_until = NULL, confirmed_at = now()
 WHERE id = $1
   AND status = 'PENDING'
   AND held_until >= now()
 RETURNING id, passenger_id, trip_seat_id, start_station_id, end_station_id,
           start_sequence, end_sequence, fare, status, booking_reference,
-          booking_timestamp, held_until;
+          booking_timestamp, held_until, confirmed_at;
 
 -- name: GetBooking :one
 SELECT id, passenger_id, trip_seat_id, start_station_id, end_station_id,

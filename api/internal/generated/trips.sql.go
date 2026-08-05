@@ -90,7 +90,7 @@ DELETE FROM trips
 WHERE id = $1
 `
 
-// Fails with a restrict_violation if any booking or unreserved ticket references this trip: bookings RESTRICT trip_seats, and unreserved_tickets RESTRICTs trips directly.
+// Fails with a restrict_violation if any booking or unreserved ticket references this trip. Bookings RESTRICT trip_seats, and unreserved_tickets RESTRICTs trips directly.
 func (q *Queries) DeleteTrip(ctx context.Context, id int32) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteTrip, id)
 	if err != nil {
@@ -212,7 +212,7 @@ type SearchTripsRow struct {
 	RouteName      string      `json:"route_name"`
 }
 
-// Matches by station pair, not route_id: a trip qualifies if its route passes through both stations in that order on the given date.
+// Matches by station pair, not route_id. A trip qualifies if its route passes through both stations in that order on the given date.
 func (q *Queries) SearchTrips(ctx context.Context, arg SearchTripsParams) ([]SearchTripsRow, error) {
 	rows, err := q.db.Query(ctx, searchTrips,
 		arg.StartStationID,
