@@ -239,6 +239,14 @@ type TripSeat struct {
 	SeatID int32 `json:"seat_id"`
 }
 
+type TripStopTime struct {
+	ID             int32            `json:"id"`
+	TripID         int32            `json:"trip_id"`
+	RouteStationID int32            `json:"route_station_id"`
+	ArrivalTime    pgtype.Timestamp `json:"arrival_time"`
+	DepartureTime  pgtype.Timestamp `json:"departure_time"`
+}
+
 type UnreservedTicket struct {
 	ID             int32            `json:"id"`
 	TripID         int32            `json:"trip_id"`

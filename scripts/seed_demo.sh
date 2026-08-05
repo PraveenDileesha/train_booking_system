@@ -155,6 +155,9 @@ route_resp="$(curl -sf -X POST "$ADMIN/routes" \
 route_id="$(echo "$route_resp" | jq -r '.route.id')"
 echo "created route: $DEMO_ROUTE_NAME (id $route_id)"
 
+route_stations_json="$(echo "$route_resp" | jq -c '.stations')"
+total_distance="$(echo "$route_stations_json" | jq '[.[].distance_from_origin] | max')"
+
 # ---------- Coaches ----------
 # 8 coaches, 8 rows each, 3 reserved (one per class) and 5 unreserved.
 # name:class:is_reservable:row_count
@@ -208,12 +211,37 @@ offset_date() {
 
 SLOTS=("06:00:14:00" "14:30:22:30")
 
+# minutes_to_hhmm converts an integer minute-of-day into an HH:MM string.
+minutes_to_hhmm() {
+  printf '%02d:%02d' $(($1 / 60)) $(($1 % 60))
+}
+
+# stopsForSlot interpolates every intermediate stop's arrival and departure time from its distance_from_origin, proportional to the slot's total duration.
+# There is no admin typing these in by hand during seeding, so a proportional estimate stands in for a real timetable.
+stopsForSlot() {
+  local dep_minutes="$1" arr_minutes="$2"
+  local duration=$((arr_minutes - dep_minutes))
+  echo "$route_stations_json" | jq -c '.[1:-1][]' | while read -r stop; do
+    stop_id="$(echo "$stop" | jq -r '.id')"
+    dist="$(echo "$stop" | jq -r '.distance_from_origin')"
+    offset_min="$(awk -v d="$dist" -v td="$total_distance" -v dur="$duration" 'BEGIN { printf "%d", (d / td) * dur }')"
+    arr_min=$((dep_minutes + offset_min))
+    dep_min_stop=$((arr_min + 1))
+    if [ "$dep_min_stop" -gt "$arr_minutes" ]; then dep_min_stop=$arr_minutes; fi
+    jq -n --argjson id "$stop_id" --arg arr "$(minutes_to_hhmm "$arr_min")" --arg dep "$(minutes_to_hhmm "$dep_min_stop")" \
+      '{route_station_id: $id, arrival_time: $arr, departure_time: $dep}'
+  done | jq -s '.'
+}
+
 for day_offset in 0 1 2; do
   dep_date="$(offset_date "$day_offset")"
   for slot in "${SLOTS[@]}"; do
     IFS=':' read -r dep_h dep_m arr_h arr_m <<< "$slot"
     dep_time="${dep_h}:${dep_m}"
     arr_time="${arr_h}:${arr_m}"
+    dep_minutes=$((10#$dep_h * 60 + 10#$dep_m))
+    arr_minutes=$((10#$arr_h * 60 + 10#$arr_m))
+    stops_json="$(stopsForSlot "$dep_minutes" "$arr_minutes")"
 
     trip_id="$(curl -sf -X POST "$ADMIN/trips" \
       -H 'Content-Type: application/json' \
@@ -224,10 +252,11 @@ for day_offset in 0 1 2; do
         --arg arr_date "$dep_date" \
         --arg arr_time "$arr_time" \
         --argjson coach_ids "$coach_ids_json" \
+        --argjson stops "$stops_json" \
         --argjson fares "$fares_json" \
         '{route_id: $route_id, departure_date: $dep_date, departure_time: $dep_time,
           arrival_date: $arr_date, arrival_time: $arr_time,
-          coach_ids: $coach_ids, fares: $fares}')" \
+          coach_ids: $coach_ids, fares: $fares, stops: $stops}')" \
       | jq -r '.id')"
     echo "  created trip: $dep_date $dep_time -> $arr_time (id $trip_id)"
   done

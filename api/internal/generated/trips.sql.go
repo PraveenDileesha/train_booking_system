@@ -22,7 +22,7 @@ JOIN route_stations rs_end ON rs_end.route_version_id = t.route_version_id
     AND rs_end.station_id = $2
 WHERE t.departure_date = $3
   AND rs_start.stop_sequence < rs_end.stop_sequence
-  AND (t.departure_date != CURRENT_DATE OR t.departure_time > CURRENT_TIME)
+  AND (t.departure_date + t.departure_time) > (now()::timestamp + interval '2 hours')
 `
 
 type CountSearchTripsParams struct {
@@ -123,7 +123,12 @@ func (q *Queries) GetTrip(ctx context.Context, id int32) (Trip, error) {
 
 const listTrips = `-- name: ListTrips :many
 SELECT t.id, t.route_version_id, t.departure_date, t.departure_time, t.status, t.arrival_date, t.arrival_time,
-       r.id AS route_id, r.name AS route_name
+       r.id AS route_id, r.name AS route_name,
+       EXISTS (
+           SELECT 1 FROM bookings b JOIN trip_seats ts ON ts.id = b.trip_seat_id WHERE ts.trip_id = t.id
+           UNION ALL
+           SELECT 1 FROM unreserved_tickets ut WHERE ut.trip_id = t.id
+       ) AS has_activity
 FROM trips t
 JOIN route_versions rv ON rv.id = t.route_version_id
 JOIN routes r ON r.id = rv.route_id
@@ -146,8 +151,10 @@ type ListTripsRow struct {
 	ArrivalTime    pgtype.Time `json:"arrival_time"`
 	RouteID        int32       `json:"route_id"`
 	RouteName      string      `json:"route_name"`
+	HasActivity    bool        `json:"has_activity"`
 }
 
+// has_activity mirrors DeleteTrip's own restrict checks exactly, so the admin UI can hide the delete option for a trip that would fail anyway.
 func (q *Queries) ListTrips(ctx context.Context, arg ListTripsParams) ([]ListTripsRow, error) {
 	rows, err := q.db.Query(ctx, listTrips, arg.RowOffset, arg.RowLimit)
 	if err != nil {
@@ -167,6 +174,7 @@ func (q *Queries) ListTrips(ctx context.Context, arg ListTripsParams) ([]ListTri
 			&i.ArrivalTime,
 			&i.RouteID,
 			&i.RouteName,
+			&i.HasActivity,
 		); err != nil {
 			return nil, err
 		}
@@ -190,7 +198,7 @@ JOIN route_stations rs_end ON rs_end.route_version_id = t.route_version_id
     AND rs_end.station_id = $2
 WHERE t.departure_date = $3
   AND rs_start.stop_sequence < rs_end.stop_sequence
-  AND (t.departure_date != CURRENT_DATE OR t.departure_time > CURRENT_TIME)
+  AND (t.departure_date + t.departure_time) > (now()::timestamp + interval '2 hours')
 ORDER BY t.departure_time
 LIMIT $5 OFFSET $4
 `
@@ -215,7 +223,7 @@ type SearchTripsRow struct {
 }
 
 // Matches by station pair, not route_id. A trip qualifies if its route passes through both stations in that order on the given date.
-// Excludes a trip searched for today once its departure_time has already passed.
+// Excludes a trip once its departure is less than 2 hours away, mirroring onlineBookingCutoff in api/internal/handlers/trips.go.
 func (q *Queries) SearchTrips(ctx context.Context, arg SearchTripsParams) ([]SearchTripsRow, error) {
 	rows, err := q.db.Query(ctx, searchTrips,
 		arg.StartStationID,

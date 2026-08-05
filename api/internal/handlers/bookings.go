@@ -97,8 +97,8 @@ func (h *BookingHandler) ListAvailableSeats(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "failed to load trip", http.StatusInternalServerError)
 		return
 	}
-	if hasDeparted(trip.Status, combineDateTime(trip.DepartureDate, trip.DepartureTime), combineDateTime(trip.ArrivalDate, trip.ArrivalTime)) {
-		http.Error(w, "this trip has already departed", http.StatusConflict)
+	if onlineBookingClosed(combineDateTime(trip.DepartureDate, trip.DepartureTime)) {
+		http.Error(w, "online booking for this trip has closed", http.StatusConflict)
 		return
 	}
 
@@ -206,8 +206,8 @@ func bookOneSeat(ctx context.Context, qtx *generated.Queries, tripSeatID, startS
 	if !tripSeat.IsReservable {
 		return bookingResponse{}, &seatBookingError{http.StatusBadRequest, fmt.Sprintf("seat %d is in an unreserved coach and cannot be individually booked", tripSeatID)}
 	}
-	if hasDeparted(tripSeat.TripStatus, combineDateTime(tripSeat.DepartureDate, tripSeat.DepartureTime), combineDateTime(tripSeat.ArrivalDate, tripSeat.ArrivalTime)) {
-		return bookingResponse{}, &seatBookingError{http.StatusConflict, fmt.Sprintf("seat %d's trip has already departed", tripSeatID)}
+	if onlineBookingClosed(combineDateTime(tripSeat.DepartureDate, tripSeat.DepartureTime)) {
+		return bookingResponse{}, &seatBookingError{http.StatusConflict, fmt.Sprintf("online booking for seat %d's trip has closed", tripSeatID)}
 	}
 
 	stops, err := stopsByStation(ctx, qtx, tripSeat.RouteVersionID)

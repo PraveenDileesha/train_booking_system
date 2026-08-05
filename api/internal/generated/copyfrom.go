@@ -41,3 +41,38 @@ func (r iteratorForCreateSeats) Err() error {
 func (q *Queries) CreateSeats(ctx context.Context, arg []CreateSeatsParams) (int64, error) {
 	return q.db.CopyFrom(ctx, []string{"seats"}, []string{"coach_id", "seat_number"}, &iteratorForCreateSeats{rows: arg})
 }
+
+// iteratorForCreateTripStopTimes implements pgx.CopyFromSource.
+type iteratorForCreateTripStopTimes struct {
+	rows                 []CreateTripStopTimesParams
+	skippedFirstNextCall bool
+}
+
+func (r *iteratorForCreateTripStopTimes) Next() bool {
+	if len(r.rows) == 0 {
+		return false
+	}
+	if !r.skippedFirstNextCall {
+		r.skippedFirstNextCall = true
+		return true
+	}
+	r.rows = r.rows[1:]
+	return len(r.rows) > 0
+}
+
+func (r iteratorForCreateTripStopTimes) Values() ([]interface{}, error) {
+	return []interface{}{
+		r.rows[0].TripID,
+		r.rows[0].RouteStationID,
+		r.rows[0].ArrivalTime,
+		r.rows[0].DepartureTime,
+	}, nil
+}
+
+func (r iteratorForCreateTripStopTimes) Err() error {
+	return nil
+}
+
+func (q *Queries) CreateTripStopTimes(ctx context.Context, arg []CreateTripStopTimesParams) (int64, error) {
+	return q.db.CopyFrom(ctx, []string{"trip_stop_times"}, []string{"trip_id", "route_station_id", "arrival_time", "departure_time"}, &iteratorForCreateTripStopTimes{rows: arg})
+}

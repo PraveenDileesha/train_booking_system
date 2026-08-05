@@ -32,6 +32,7 @@ type Querier interface {
 	CreateTripCoaches(ctx context.Context, arg CreateTripCoachesParams) error
 	CreateTripFare(ctx context.Context, arg CreateTripFareParams) (TripFare, error)
 	CreateTripSeatsForCoaches(ctx context.Context, arg CreateTripSeatsForCoachesParams) error
+	CreateTripStopTimes(ctx context.Context, arg []CreateTripStopTimesParams) (int64, error)
 	CreateUnreservedTicket(ctx context.Context, arg CreateUnreservedTicketParams) (UnreservedTicket, error)
 	DeactivateRouteVersion(ctx context.Context, id int32) error
 	DeleteCoach(ctx context.Context, id int32) (int64, error)
@@ -50,8 +51,9 @@ type Querier interface {
 	GetTrip(ctx context.Context, id int32) (Trip, error)
 	GetTripFare(ctx context.Context, arg GetTripFareParams) (TripFare, error)
 	// Includes route_version_id, used to resolve station sequences and distances.
-	// Includes the trip's departure and arrival timestamps and status, used to reject booking a seat on a trip that has already departed.
+	// Includes the trip's departure_date and departure_time, used to reject booking a seat once online booking has closed for that trip.
 	GetTripSeat(ctx context.Context, id int32) (GetTripSeatRow, error)
+	// has_activity mirrors DeleteCoach's own restrict check, trip_coaches.coach_id, so the admin UI can hide the delete option for a coach that would fail anyway.
 	ListCoaches(ctx context.Context, arg ListCoachesParams) ([]ListCoachesRow, error)
 	ListDailyRevenue(ctx context.Context, dayLimit int32) ([]ListDailyRevenueRow, error)
 	// Joins a confirmed booking to the seat, coach, route and trip it was made against, so the revenue log can show what was actually sold, not just a booking ID.
@@ -67,9 +69,11 @@ type Querier interface {
 	ListTripFares(ctx context.Context, tripID int32) ([]TripFare, error)
 	// is_available is false only for a CONFIRMED booking or a live (unexpired) PENDING hold whose range overlaps [start_sequence, end_sequence).
 	ListTripSeatsWithAvailability(ctx context.Context, arg ListTripSeatsWithAvailabilityParams) ([]ListTripSeatsWithAvailabilityRow, error)
+	ListTripStopTimes(ctx context.Context, tripID int32) ([]ListTripStopTimesRow, error)
+	// has_activity mirrors DeleteTrip's own restrict checks exactly, so the admin UI can hide the delete option for a trip that would fail anyway.
 	ListTrips(ctx context.Context, arg ListTripsParams) ([]ListTripsRow, error)
 	// Matches by station pair, not route_id. A trip qualifies if its route passes through both stations in that order on the given date.
-	// Excludes a trip searched for today once its departure_time has already passed.
+	// Excludes a trip once its departure is less than 2 hours away, mirroring onlineBookingCutoff in api/internal/handlers/trips.go.
 	SearchTrips(ctx context.Context, arg SearchTripsParams) ([]SearchTripsRow, error)
 }
 

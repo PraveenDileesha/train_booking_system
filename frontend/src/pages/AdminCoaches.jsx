@@ -165,9 +165,11 @@ export default function AdminCoaches() {
                       <td>{c.row_count}</td>
                       <td>{c.capacity}</td>
                       <td style={{ textAlign: 'right' }}>
-                        <button className="btn btn-danger btn-sm" onClick={() => handleDelete(c.id)}>
-                          Delete
-                        </button>
+                        {!c.has_activity && (
+                          <button className="btn btn-danger btn-sm" onClick={() => handleDelete(c.id)}>
+                            Delete
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}

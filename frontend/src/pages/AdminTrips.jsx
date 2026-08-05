@@ -24,6 +24,8 @@ export default function AdminTrips() {
   const [arrivalTime, setArrivalTime] = useState('16:30');
   const [selectedCoachIds, setSelectedCoachIds] = useState([]);
   const [baseRate, setBaseRate] = useState(5);
+  const [routeStations, setRouteStations] = useState([]);
+  const [stopTimes, setStopTimes] = useState({});
 
   // Trips get a real paginated table. Routes and coaches here are just dropdown and checkbox source data for the create-trip form, so they're fetched in full rather than paginated.
   async function loadTrips(targetPage = page) {
@@ -58,6 +60,50 @@ export default function AdminTrips() {
   useEffect(() => {
     if (date) setArrivalDate((prev) => prev || date);
   }, [date]);
+
+  // Intermediate stops need their own arrival and departure time, fetched fresh whenever the selected route changes.
+  useEffect(() => {
+    setStopTimes({});
+    if (!routeId) {
+      setRouteStations([]);
+      return;
+    }
+    api.getRoute(routeId).then((data) => setRouteStations(data.stations || [])).catch((e) => setError(e.message));
+  }, [routeId]);
+
+  const intermediateStops = useMemo(() => routeStations.slice(1, -1), [routeStations]);
+
+  function setStopTime(stationId, field, value) {
+    setStopTimes((prev) => ({ ...prev, [stationId]: { ...prev[stationId], [field]: value } }));
+  }
+
+  // Mirrors nextInstant in api/internal/handlers/trips.go. Combines hhmm with the same calendar day as after, rolling to the next day if that would land before after.
+  function nextInstant(after, hhmm) {
+    const [h, m] = hhmm.split(':').map(Number);
+    const candidate = new Date(after.getFullYear(), after.getMonth(), after.getDate(), h, m, 0, 0);
+    if (candidate < after) candidate.setDate(candidate.getDate() + 1);
+    return candidate;
+  }
+
+  // Walks the intermediate stops in route order the same way the backend does, so an out-of-order stop is caught before submit rather than after a 400.
+  function validateStopTimes() {
+    if (intermediateStops.length === 0) return null;
+    let cursor = new Date(`${date}T${time}`);
+    const tripArrival = new Date(`${arrivalDate}T${arrivalTime}`);
+    for (const stop of intermediateStops) {
+      const times = stopTimes[stop.id];
+      if (!times || !times.arrival || !times.departure) {
+        return `${stop.station_name} is missing an arrival or departure time.`;
+      }
+      const arrival = nextInstant(cursor, times.arrival);
+      const departure = nextInstant(arrival, times.departure);
+      cursor = departure;
+    }
+    if (cursor > tripArrival) {
+      return "Stop times run past the trip's arrival time.";
+    }
+    return null;
+  }
 
   function toggleCoach(id) {
     setSelectedCoachIds((prev) =>
@@ -96,6 +142,11 @@ export default function AdminTrips() {
       setError('Route, departure, arrival and at least one coach are required.');
       return;
     }
+    const stopTimesError = validateStopTimes();
+    if (stopTimesError) {
+      setError(stopTimesError);
+      return;
+    }
     setCreating(true);
     setError(null);
     try {
@@ -111,9 +162,15 @@ export default function AdminTrips() {
           is_reservable: slot.is_reservable,
           rate_per_km: Number(fareFor(slot)),
         })),
+        stops: intermediateStops.map((stop) => ({
+          route_station_id: stop.id,
+          arrival_time: stopTimes[stop.id].arrival,
+          departure_time: stopTimes[stop.id].departure,
+        })),
       });
       setSelectedCoachIds([]);
       setFareOverrides({});
+      setStopTimes({});
       setArrivalDate('');
       await loadTrips(1);
     } catch (e) {
@@ -170,6 +227,39 @@ export default function AdminTrips() {
                 </span>
               </label>
             </div>
+
+            {intermediateStops.length > 0 && (
+              <>
+                <h3 style={{ fontSize: '0.9rem', margin: '1rem 0 0.5rem' }}>Stop times</h3>
+                <table className="admin-table">
+                  <thead>
+                    <tr><th>Station</th><th>Distance (km)</th><th>Arrival</th><th>Departure</th></tr>
+                  </thead>
+                  <tbody>
+                    {intermediateStops.map((stop) => (
+                      <tr key={stop.id}>
+                        <td>{stop.station_name}</td>
+                        <td>{stop.distance_from_origin}</td>
+                        <td>
+                          <input
+                            type="time"
+                            value={stopTimes[stop.id]?.arrival || ''}
+                            onChange={(e) => setStopTime(stop.id, 'arrival', e.target.value)}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="time"
+                            value={stopTimes[stop.id]?.departure || ''}
+                            onChange={(e) => setStopTime(stop.id, 'departure', e.target.value)}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
 
             <h3 style={{ fontSize: '0.9rem', margin: '1rem 0 0.5rem' }}>Attach coaches</h3>
             {coaches.length === 0 ? (
@@ -263,9 +353,11 @@ export default function AdminTrips() {
                       <td>{t.arrival_date} {t.arrival_time}</td>
                       <td>{t.status}</td>
                       <td style={{ textAlign: 'right' }}>
-                        <button className="btn btn-danger btn-sm" onClick={() => handleDeleteTrip(t.id)}>
-                          Delete
-                        </button>
+                        {!t.has_activity && (
+                          <button className="btn btn-danger btn-sm" onClick={() => handleDeleteTrip(t.id)}>
+                            Delete
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}

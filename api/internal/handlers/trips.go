@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -62,6 +63,20 @@ func combineDateTime(d pgtype.Date, t pgtype.Time) time.Time {
 	return d.Time.Add(time.Duration(t.Microseconds) * time.Microsecond)
 }
 
+// nextInstant combines hhmm with the same calendar day as after, rolling to the next day if that would land before after.
+// Used to infer each stop's date along a route from nothing but a time of day, in stop order.
+func nextInstant(after time.Time, hhmm string) (time.Time, error) {
+	t, err := time.Parse("15:04", hhmm)
+	if err != nil {
+		return time.Time{}, err
+	}
+	candidate := time.Date(after.Year(), after.Month(), after.Day(), t.Hour(), t.Minute(), 0, 0, after.Location())
+	if candidate.Before(after) {
+		candidate = candidate.AddDate(0, 0, 1)
+	}
+	return candidate, nil
+}
+
 // boardingWindow is how long before departure a trip shows as BOARDING rather than SCHEDULED.
 const boardingWindow = 15 * time.Minute
 
@@ -85,6 +100,7 @@ func effectiveTripStatus(stored generated.TripStatus, departure, arrival time.Ti
 }
 
 // hasDeparted reports whether a trip is no longer bookable because it has already left, arrived, or been cancelled.
+// Used for the ticket counter, where a walk-up passenger can still be sold a ticket right up until the train actually leaves.
 func hasDeparted(stored generated.TripStatus, departure, arrival time.Time) bool {
 	switch effectiveTripStatus(stored, departure, arrival) {
 	case generated.TripStatusDEPARTED, generated.TripStatusCOMPLETED, generated.TripStatusCANCELLED:
@@ -92,6 +108,15 @@ func hasDeparted(stored generated.TripStatus, departure, arrival time.Time) bool
 	default:
 		return false
 	}
+}
+
+// onlineBookingCutoff is how long before origin departure online reservations close.
+// Applied uniformly regardless of which station a passenger boards at, since only the origin's departure time is tracked, not per-stop arrival times.
+const onlineBookingCutoff = 2 * time.Hour
+
+// onlineBookingClosed reports whether reserved-seat booking is closed for a trip, either because departure is less than onlineBookingCutoff away or because it has already departed.
+func onlineBookingClosed(departure time.Time) bool {
+	return !time.Now().Before(departure.Add(-onlineBookingCutoff))
 }
 
 type tripResponse struct {
@@ -103,6 +128,17 @@ type tripResponse struct {
 	ArrivalTime    string `json:"arrival_time"`
 	Status         string `json:"status"`
 	RouteName      string `json:"route_name,omitempty"`
+}
+
+// tripStationResponse is one stop on a trip's route, with the trip's own departure and arrival filling the first and last stop and trip_stop_times filling every stop in between.
+type tripStationResponse struct {
+	ID                 int32   `json:"id"`
+	StationID          int32   `json:"station_id"`
+	StationName        string  `json:"station_name"`
+	StopSequence       int32   `json:"stop_sequence"`
+	DistanceFromOrigin float64 `json:"distance_from_origin"`
+	ArrivalTime        *string `json:"arrival_time,omitempty"`
+	DepartureTime      *string `json:"departure_time,omitempty"`
 }
 
 func toTripResponse(t generated.Trip) tripResponse {
@@ -123,6 +159,12 @@ type createTripFareInput struct {
 	RatePerKm    float64              `json:"rate_per_km"`
 }
 
+type createTripStopInput struct {
+	RouteStationID int32  `json:"route_station_id"`
+	ArrivalTime    string `json:"arrival_time"`
+	DepartureTime  string `json:"departure_time"`
+}
+
 type createTripRequest struct {
 	RouteID       int32                 `json:"route_id"`
 	DepartureDate string                `json:"departure_date"`
@@ -131,9 +173,11 @@ type createTripRequest struct {
 	ArrivalTime   string                `json:"arrival_time"`
 	CoachIDs      []int32               `json:"coach_ids"`
 	Fares         []createTripFareInput `json:"fares"`
+	Stops         []createTripStopInput `json:"stops"`
 }
 
 // CreateTrip schedules a trip on the route's currently active version, attaches the admin-chosen coaches (populating trip_seats for each of their seats) and records the per-class fare rates for that trip.
+// Requires an arrival and departure time for every intermediate station on the route, strictly increasing between the trip's own departure and arrival.
 func (h *TripHandler) CreateTrip(w http.ResponseWriter, r *http.Request) {
 	var req createTripRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -183,6 +227,58 @@ func (h *TripHandler) CreateTrip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	stations, err := h.Queries.GetRouteVersionStations(ctx, activeVersion.ID)
+	if err != nil {
+		log.Printf("CreateTrip GetRouteVersionStations error: %v (%T)", err, err)
+		http.Error(w, "failed to load route stations", http.StatusInternalServerError)
+		return
+	}
+	if len(stations) < 2 {
+		http.Error(w, "route has fewer than 2 stations", http.StatusInternalServerError)
+		return
+	}
+	intermediateStops := stations[1 : len(stations)-1]
+	if len(req.Stops) != len(intermediateStops) {
+		http.Error(w, fmt.Sprintf("expected stop times for %d intermediate station(s), got %d", len(intermediateStops), len(req.Stops)), http.StatusBadRequest)
+		return
+	}
+	stopByRouteStationID := make(map[int32]createTripStopInput, len(req.Stops))
+	for _, s := range req.Stops {
+		stopByRouteStationID[s.RouteStationID] = s
+	}
+
+	departureInstant := combineDateTime(date, depTime)
+	arrivalInstant := combineDateTime(arrDate, arrTime)
+	cursor := departureInstant
+	stopParams := make([]generated.CreateTripStopTimesParams, 0, len(intermediateStops))
+	for _, st := range intermediateStops {
+		input, ok := stopByRouteStationID[st.ID]
+		if !ok {
+			http.Error(w, fmt.Sprintf("missing stop time for station %q", st.StationName), http.StatusBadRequest)
+			return
+		}
+		arrival, err := nextInstant(cursor, input.ArrivalTime)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("invalid arrival_time for station %q, expected HH:MM", st.StationName), http.StatusBadRequest)
+			return
+		}
+		departure, err := nextInstant(arrival, input.DepartureTime)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("invalid departure_time for station %q, expected HH:MM", st.StationName), http.StatusBadRequest)
+			return
+		}
+		cursor = departure
+		stopParams = append(stopParams, generated.CreateTripStopTimesParams{
+			RouteStationID: st.ID,
+			ArrivalTime:    pgtype.Timestamp{Time: arrival, Valid: true},
+			DepartureTime:  pgtype.Timestamp{Time: departure, Valid: true},
+		})
+	}
+	if cursor.After(arrivalInstant) {
+		http.Error(w, "stop times exceed the trip's arrival time", http.StatusBadRequest)
+		return
+	}
+
 	tx, err := h.Pool.Begin(ctx)
 	if err != nil {
 		http.Error(w, "failed to start transaction", http.StatusInternalServerError)
@@ -207,6 +303,17 @@ func (h *TripHandler) CreateTrip(w http.ResponseWriter, r *http.Request) {
 		log.Printf("CreateTrip CreateTrip error: %v (%T)", err, err)
 		http.Error(w, "failed to create trip", http.StatusInternalServerError)
 		return
+	}
+
+	if len(stopParams) > 0 {
+		for i := range stopParams {
+			stopParams[i].TripID = trip.ID
+		}
+		if _, err := qtx.CreateTripStopTimes(ctx, stopParams); err != nil {
+			log.Printf("CreateTrip CreateTripStopTimes error: %v (%T)", err, err)
+			http.Error(w, "failed to save stop times", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	if err := qtx.CreateTripCoaches(ctx, generated.CreateTripCoachesParams{
@@ -269,7 +376,7 @@ func (h *TripHandler) CreateTrip(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(toTripResponse(trip))
 }
 
-// ListTrips returns a paginated list of trips.
+// ListTrips returns a paginated list of trips, each with has_activity so the caller can tell whether DeleteTrip would succeed without having to try it.
 func (h *TripHandler) ListTrips(w http.ResponseWriter, r *http.Request) {
 	page, pageSize := parsePagination(r)
 
@@ -302,6 +409,7 @@ func (h *TripHandler) ListTrips(w http.ResponseWriter, r *http.Request) {
 			"status":           effectiveTripStatus(t.Status, combineDateTime(t.DepartureDate, t.DepartureTime), combineDateTime(t.ArrivalDate, t.ArrivalTime)),
 			"route_id":         t.RouteID,
 			"route_name":       t.RouteName,
+			"has_activity":     t.HasActivity,
 		})
 	}
 
@@ -365,6 +473,50 @@ func (h *TripHandler) GetTrip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	stopTimes, err := h.Queries.ListTripStopTimes(ctx, trip.ID)
+	if err != nil {
+		log.Printf("GetTrip ListTripStopTimes error: %v (%T)", err, err)
+		http.Error(w, "failed to load stop times", http.StatusInternalServerError)
+		return
+	}
+	stopTimeByRouteStationID := make(map[int32]generated.ListTripStopTimesRow, len(stopTimes))
+	for _, st := range stopTimes {
+		stopTimeByRouteStationID[st.RouteStationID] = st
+	}
+
+	tripResp := toTripResponse(trip)
+	stationResponses := make([]tripStationResponse, len(stations))
+	for i, s := range stations {
+		distance, err := numericToFloat64(s.DistanceFromOrigin)
+		if err != nil {
+			http.Error(w, "invalid distance value", http.StatusInternalServerError)
+			return
+		}
+		resp := tripStationResponse{
+			ID:                 s.ID,
+			StationID:          s.StationID,
+			StationName:        s.StationName,
+			StopSequence:       s.StopSequence,
+			DistanceFromOrigin: distance,
+		}
+		switch {
+		case i == 0:
+			dep := tripResp.DepartureTime
+			resp.DepartureTime = &dep
+		case i == len(stations)-1:
+			arr := tripResp.ArrivalTime
+			resp.ArrivalTime = &arr
+		default:
+			if st, ok := stopTimeByRouteStationID[s.ID]; ok {
+				arr := st.ArrivalTime.Time.Format("15:04")
+				dep := st.DepartureTime.Time.Format("15:04")
+				resp.ArrivalTime = &arr
+				resp.DepartureTime = &dep
+			}
+		}
+		stationResponses[i] = resp
+	}
+
 	coaches, err := h.Queries.ListTripCoaches(ctx, trip.ID)
 	if err != nil {
 		log.Printf("GetTrip ListTripCoaches error: %v (%T)", err, err)
@@ -381,8 +533,8 @@ func (h *TripHandler) GetTrip(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
-		"trip":     toTripResponse(trip),
-		"stations": stations,
+		"trip":     tripResp,
+		"stations": stationResponses,
 		"coaches":  coaches,
 		"fares":    fares,
 	})

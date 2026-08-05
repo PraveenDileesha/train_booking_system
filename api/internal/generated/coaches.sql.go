@@ -106,9 +106,10 @@ func (q *Queries) GetCoach(ctx context.Context, id int32) (GetCoachRow, error) {
 }
 
 const listCoaches = `-- name: ListCoaches :many
-SELECT id, coach_name, class, is_reservable, row_count, capacity
-FROM coaches
-ORDER BY coach_name
+SELECT c.id, c.coach_name, c.class, c.is_reservable, c.row_count, c.capacity,
+       EXISTS (SELECT 1 FROM trip_coaches tc WHERE tc.coach_id = c.id) AS has_activity
+FROM coaches c
+ORDER BY c.coach_name
 LIMIT $2 OFFSET $1
 `
 
@@ -124,8 +125,10 @@ type ListCoachesRow struct {
 	IsReservable bool       `json:"is_reservable"`
 	RowCount     int32      `json:"row_count"`
 	Capacity     int32      `json:"capacity"`
+	HasActivity  bool       `json:"has_activity"`
 }
 
+// has_activity mirrors DeleteCoach's own restrict check, trip_coaches.coach_id, so the admin UI can hide the delete option for a coach that would fail anyway.
 func (q *Queries) ListCoaches(ctx context.Context, arg ListCoachesParams) ([]ListCoachesRow, error) {
 	rows, err := q.db.Query(ctx, listCoaches, arg.RowOffset, arg.RowLimit)
 	if err != nil {
@@ -142,6 +145,7 @@ func (q *Queries) ListCoaches(ctx context.Context, arg ListCoachesParams) ([]Lis
 			&i.IsReservable,
 			&i.RowCount,
 			&i.Capacity,
+			&i.HasActivity,
 		); err != nil {
 			return nil, err
 		}

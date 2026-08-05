@@ -49,8 +49,11 @@ export default function CustomerSearch() {
       <main className="content" style={{ flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
         <div className="glass-card">
           <h2>Find a Seat</h2>
-          <p style={{ marginBottom: '1rem', color: '#556' }}>
+          <p style={{ marginBottom: '0.5rem', color: '#556' }}>
             Search available trains and reserve your journey.
+          </p>
+          <p style={{ marginBottom: '1rem', color: '#889', fontSize: '0.85rem' }}>
+            Online booking closes 2 hours before departure. Visit the ticket counter after that.
           </p>
 
           {error && <div className="error-banner">{error}</div>}

@@ -130,7 +130,7 @@ func (h *CoachHandler) CreateCoach(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ListCoaches returns a paginated list of coaches.
+// ListCoaches returns a paginated list of coaches, each with has_activity so the caller can tell whether DeleteCoach would succeed without having to try it.
 func (h *CoachHandler) ListCoaches(w http.ResponseWriter, r *http.Request) {
 	page, pageSize := parsePagination(r)
 
