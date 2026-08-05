@@ -33,6 +33,7 @@ func main() {
 	tripHandler := &handlers.TripHandler{Pool: pool, Queries: queries}
 	bookingHandler := &handlers.BookingHandler{Pool: pool, Queries: queries}
 	counterHandler := &handlers.CounterHandler{Pool: pool, Queries: queries}
+	revenueHandler := &handlers.RevenueHandler{Queries: queries}
 
 	mux := http.NewServeMux()
 
@@ -68,8 +69,12 @@ func main() {
 	mux.HandleFunc("GET /api/v1/admin/trips", tripHandler.ListTrips)
 	mux.HandleFunc("DELETE /api/v1/admin/trips/{id}", tripHandler.DeleteTrip)
 
-	// Trip detail, search, and booking are shared between the admin and customer-facing UIs, so they live outside /admin.
-	// The trip, counter, and booking endpoints below are the public surface and get rate limited.
+	mux.HandleFunc("GET /api/v1/admin/revenue/today", revenueHandler.GetTodayRevenue)
+	mux.HandleFunc("GET /api/v1/admin/revenue/daily", revenueHandler.ListDailyRevenue)
+	mux.HandleFunc("GET /api/v1/admin/revenue/bookings", revenueHandler.ListRevenueBookingsByDate)
+
+	// Trip detail, search and booking are shared between the admin and customer-facing UIs, so they live outside /admin.
+	// The trip, counter and booking endpoints below are the public surface and get rate limited.
 	mux.Handle("GET /api/v1/trips", publicLimiter.Limit(tripHandler.SearchTrips))
 	mux.Handle("GET /api/v1/trips/{id}", publicLimiter.Limit(tripHandler.GetTrip))
 	mux.Handle("GET /api/v1/trips/{id}/seats", publicLimiter.Limit(bookingHandler.ListAvailableSeats))
