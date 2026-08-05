@@ -4,6 +4,7 @@ import AdminRoutes from './pages/AdminRoutes';
 import AdminRouteDetail from './pages/AdminRouteDetail';
 import AdminCoaches from './pages/AdminCoaches';
 import AdminTrips from './pages/AdminTrips';
+import AdminRevenue from './pages/AdminRevenue';
 import CustomerSearch from './pages/CustomerSearch';
 import CounterView from './pages/CounterView';
 
@@ -30,6 +31,10 @@ function AdminHome() {
             <h3>Trips</h3>
             <p>Schedule trips, attach coaches and set per-class fares.</p>
           </Link>
+          <Link to="/admin/revenue" className="nav-card">
+            <h3>Revenue</h3>
+            <p>Track confirmed booking revenue, today and day by day.</p>
+          </Link>
         </div>
       </div>
     </div>
@@ -49,6 +54,7 @@ function App() {
         <Route path="/admin/routes/:id" element={<AdminRouteDetail />} />
         <Route path="/admin/coaches" element={<AdminCoaches />} />
         <Route path="/admin/trips" element={<AdminTrips />} />
+        <Route path="/admin/revenue" element={<AdminRevenue />} />
       </Routes>
     </Router>
   );

@@ -30,8 +30,7 @@ function pageParams({ page, pageSize, sort } = {}) {
   return qs ? `?${qs}` : '';
 }
 
-// Dropdown/select inputs need the whole list, not one page of it. Real
-// pagination controls are only worth showing for the admin table views.
+// Dropdown and select inputs need the whole list, not one page of it. Real pagination controls are only worth showing for the admin table views.
 const ALL_PAGE_SIZE = 200;
 
 export const api = {
@@ -61,6 +60,10 @@ export const api = {
   listTrips: (opts) => request(`/trips${pageParams(opts)}`),
   createTrip: (trip) => request('/trips', { method: 'POST', body: JSON.stringify(trip) }),
   deleteTrip: (id) => request(`/trips/${id}`, { method: 'DELETE' }),
+
+  getTodayRevenue: () => request('/revenue/today'),
+  listDailyRevenue: (days) => request(`/revenue/daily?days=${days}`),
+  listRevenueBookings: (date, opts) => request(`/revenue/bookings?date=${date}${pageParams(opts).replace('?', '&')}`),
 
   searchTrips: (startStationId, endStationId, date, opts) =>
     publicRequest(
