@@ -141,6 +141,14 @@ type tripStationResponse struct {
 	DepartureTime      *string `json:"departure_time,omitempty"`
 }
 
+// searchTripResponse adds the customer's own boarding and alighting times to a trip, since a passenger searching between two stations cares about their own leg, not necessarily the trip's overall origin departure and destination arrival.
+type searchTripResponse struct {
+	tripResponse
+	BoardingArrival   string `json:"boarding_arrival"`
+	BoardingDeparture string `json:"boarding_departure"`
+	AlightingArrival  string `json:"alighting_arrival"`
+}
+
 func toTripResponse(t generated.Trip) tripResponse {
 	return tripResponse{
 		ID:             t.ID,
@@ -590,7 +598,7 @@ func (h *TripHandler) SearchTrips(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := make([]tripResponse, 0, len(trips))
+	resp := make([]searchTripResponse, 0, len(trips))
 	for _, t := range trips {
 		tr := toTripResponse(generated.Trip{
 			ID:             t.ID,
@@ -602,7 +610,12 @@ func (h *TripHandler) SearchTrips(w http.ResponseWriter, r *http.Request) {
 			Status:         t.Status,
 		})
 		tr.RouteName = t.RouteName
-		resp = append(resp, tr)
+		resp = append(resp, searchTripResponse{
+			tripResponse:      tr,
+			BoardingArrival:   t.BoardingArrival.Time.Format("15:04"),
+			BoardingDeparture: t.BoardingDeparture.Time.Format("15:04"),
+			AlightingArrival:  t.AlightingArrival.Time.Format("15:04"),
+		})
 	}
 
 	w.Header().Set("Content-Type", "application/json")

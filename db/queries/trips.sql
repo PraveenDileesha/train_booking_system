@@ -29,8 +29,12 @@ SELECT COUNT(*) FROM trips;
 -- name: SearchTrips :many
 -- Matches by station pair, not route_id. A trip qualifies if its route passes through both stations in that order on the given date.
 -- Excludes a trip once its departure is less than 2 hours away, mirroring onlineBookingCutoff in api/internal/handlers/trips.go.
+-- boarding_arrival, boarding_departure and alighting_arrival are the customer's own leg times, falling back to the trip's overall departure or arrival when the chosen station is the route's origin or destination.
 SELECT t.id, t.route_version_id, t.departure_date, t.departure_time, t.status, t.arrival_date, t.arrival_time,
-       r.name AS route_name
+       r.name AS route_name,
+       COALESCE(tst_start.arrival_time, (t.departure_date + t.departure_time)::timestamp) AS boarding_arrival,
+       COALESCE(tst_start.departure_time, (t.departure_date + t.departure_time)::timestamp) AS boarding_departure,
+       COALESCE(tst_end.arrival_time, (t.arrival_date + t.arrival_time)::timestamp) AS alighting_arrival
 FROM trips t
 JOIN route_versions rv ON rv.id = t.route_version_id
 JOIN routes r ON r.id = rv.route_id
@@ -38,6 +42,8 @@ JOIN route_stations rs_start ON rs_start.route_version_id = t.route_version_id
     AND rs_start.station_id = sqlc.arg(start_station_id)
 JOIN route_stations rs_end ON rs_end.route_version_id = t.route_version_id
     AND rs_end.station_id = sqlc.arg(end_station_id)
+LEFT JOIN trip_stop_times tst_start ON tst_start.trip_id = t.id AND tst_start.route_station_id = rs_start.id
+LEFT JOIN trip_stop_times tst_end ON tst_end.trip_id = t.id AND tst_end.route_station_id = rs_end.id
 WHERE t.departure_date = sqlc.arg(departure_date)
   AND rs_start.stop_sequence < rs_end.stop_sequence
   AND (t.departure_date + t.departure_time) > (now()::timestamp + interval '2 hours')

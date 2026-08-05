@@ -188,7 +188,10 @@ func (q *Queries) ListTrips(ctx context.Context, arg ListTripsParams) ([]ListTri
 
 const searchTrips = `-- name: SearchTrips :many
 SELECT t.id, t.route_version_id, t.departure_date, t.departure_time, t.status, t.arrival_date, t.arrival_time,
-       r.name AS route_name
+       r.name AS route_name,
+       COALESCE(tst_start.arrival_time, (t.departure_date + t.departure_time)::timestamp) AS boarding_arrival,
+       COALESCE(tst_start.departure_time, (t.departure_date + t.departure_time)::timestamp) AS boarding_departure,
+       COALESCE(tst_end.arrival_time, (t.arrival_date + t.arrival_time)::timestamp) AS alighting_arrival
 FROM trips t
 JOIN route_versions rv ON rv.id = t.route_version_id
 JOIN routes r ON r.id = rv.route_id
@@ -196,6 +199,8 @@ JOIN route_stations rs_start ON rs_start.route_version_id = t.route_version_id
     AND rs_start.station_id = $1
 JOIN route_stations rs_end ON rs_end.route_version_id = t.route_version_id
     AND rs_end.station_id = $2
+LEFT JOIN trip_stop_times tst_start ON tst_start.trip_id = t.id AND tst_start.route_station_id = rs_start.id
+LEFT JOIN trip_stop_times tst_end ON tst_end.trip_id = t.id AND tst_end.route_station_id = rs_end.id
 WHERE t.departure_date = $3
   AND rs_start.stop_sequence < rs_end.stop_sequence
   AND (t.departure_date + t.departure_time) > (now()::timestamp + interval '2 hours')
@@ -212,18 +217,22 @@ type SearchTripsParams struct {
 }
 
 type SearchTripsRow struct {
-	ID             int32       `json:"id"`
-	RouteVersionID int32       `json:"route_version_id"`
-	DepartureDate  pgtype.Date `json:"departure_date"`
-	DepartureTime  pgtype.Time `json:"departure_time"`
-	Status         TripStatus  `json:"status"`
-	ArrivalDate    pgtype.Date `json:"arrival_date"`
-	ArrivalTime    pgtype.Time `json:"arrival_time"`
-	RouteName      string      `json:"route_name"`
+	ID                int32            `json:"id"`
+	RouteVersionID    int32            `json:"route_version_id"`
+	DepartureDate     pgtype.Date      `json:"departure_date"`
+	DepartureTime     pgtype.Time      `json:"departure_time"`
+	Status            TripStatus       `json:"status"`
+	ArrivalDate       pgtype.Date      `json:"arrival_date"`
+	ArrivalTime       pgtype.Time      `json:"arrival_time"`
+	RouteName         string           `json:"route_name"`
+	BoardingArrival   pgtype.Timestamp `json:"boarding_arrival"`
+	BoardingDeparture pgtype.Timestamp `json:"boarding_departure"`
+	AlightingArrival  pgtype.Timestamp `json:"alighting_arrival"`
 }
 
 // Matches by station pair, not route_id. A trip qualifies if its route passes through both stations in that order on the given date.
 // Excludes a trip once its departure is less than 2 hours away, mirroring onlineBookingCutoff in api/internal/handlers/trips.go.
+// boarding_arrival, boarding_departure and alighting_arrival are the customer's own leg times, falling back to the trip's overall departure or arrival when the chosen station is the route's origin or destination.
 func (q *Queries) SearchTrips(ctx context.Context, arg SearchTripsParams) ([]SearchTripsRow, error) {
 	rows, err := q.db.Query(ctx, searchTrips,
 		arg.StartStationID,
@@ -248,6 +257,9 @@ func (q *Queries) SearchTrips(ctx context.Context, arg SearchTripsParams) ([]Sea
 			&i.ArrivalDate,
 			&i.ArrivalTime,
 			&i.RouteName,
+			&i.BoardingArrival,
+			&i.BoardingDeparture,
+			&i.AlightingArrival,
 		); err != nil {
 			return nil, err
 		}

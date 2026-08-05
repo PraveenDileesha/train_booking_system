@@ -414,6 +414,9 @@ export function TripResults({ fromId, toId, date, onBookingComplete }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <strong>{trip.departure_time} → {trip.arrival_time}</strong> · {trip.route_name} · {trip.status}
+                <p style={{ fontSize: '0.78rem', color: '#889', marginTop: '0.25rem' }}>
+                  Boarding: arrives {trip.boarding_arrival}, departs {trip.boarding_departure} · Alighting: arrives {trip.alighting_arrival}
+                </p>
               </div>
               <button className="btn btn-ghost btn-sm" onClick={() => toggleTrip(trip.id)}>
                 {expandedTripId === trip.id ? 'Hide seats' : 'View seats'}

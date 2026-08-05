@@ -74,6 +74,7 @@ type Querier interface {
 	ListTrips(ctx context.Context, arg ListTripsParams) ([]ListTripsRow, error)
 	// Matches by station pair, not route_id. A trip qualifies if its route passes through both stations in that order on the given date.
 	// Excludes a trip once its departure is less than 2 hours away, mirroring onlineBookingCutoff in api/internal/handlers/trips.go.
+	// boarding_arrival, boarding_departure and alighting_arrival are the customer's own leg times, falling back to the trip's overall departure or arrival when the chosen station is the route's origin or destination.
 	SearchTrips(ctx context.Context, arg SearchTripsParams) ([]SearchTripsRow, error)
 }
 
