@@ -1,6 +1,7 @@
 #!/bin/bash
 # Wipes every table's data (all rows, all tables in the public schema) without touching the schema itself, so seed_demo.sh always starts from a clean slate and IDs restart at 1.
 # Table list is discovered at runtime from pg_tables rather than hardcoded, so it stays correct as the schema grows.
+# schema_migrations is excluded since it tracks which migrations have run and is not application data. Truncating it would desync golang-migrate's version tracker from the actual schema.
 #
 # Run as ./scripts/reset_db.sh
 set -euo pipefail
@@ -22,7 +23,8 @@ BEGIN
   SELECT string_agg(format('%I.%I', schemaname, tablename), ', ')
   INTO table_list
   FROM pg_tables
-  WHERE schemaname = 'public';
+  WHERE schemaname = 'public'
+    AND tablename != 'schema_migrations';
 
   IF table_list IS NOT NULL THEN
     EXECUTE 'TRUNCATE TABLE ' || table_list || ' RESTART IDENTITY CASCADE';
