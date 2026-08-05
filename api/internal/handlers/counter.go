@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 
@@ -17,6 +18,9 @@ type CounterHandler struct {
 	Pool    *pgxpool.Pool
 	Queries *generated.Queries
 }
+
+// maxTicketsPerIssue caps how many unreserved tickets one counter transaction can sell at once — mirrors the reserved-seat booking limit in bookings.go, so a single sale can't silently sweep up an unbounded block of tickets.
+const maxTicketsPerIssue = 5
 
 type issueUnreservedTicketRequest struct {
 	TripID         int32                `json:"trip_id"`
@@ -38,7 +42,8 @@ type unreservedTicketResponse struct {
 }
 
 // IssueUnreservedTicket records a first-come-first-served ticket sale.
-// There is no seat, no hold, and no capacity check — unreserved coaches sell without limit, matching the real system this replaces.
+// There is no seat, no hold, and no coach-capacity check — unreserved coaches have no per-seat inventory, matching the real system this replaces.
+// maxTicketsPerIssue still caps a single sale.
 // The row exists purely for revenue tracking.
 func (h *CounterHandler) IssueUnreservedTicket(w http.ResponseWriter, r *http.Request) {
 	var req issueUnreservedTicketRequest
@@ -52,6 +57,10 @@ func (h *CounterHandler) IssueUnreservedTicket(w http.ResponseWriter, r *http.Re
 	}
 	if req.Quantity < 1 {
 		http.Error(w, "quantity must be at least 1", http.StatusBadRequest)
+		return
+	}
+	if req.Quantity > maxTicketsPerIssue {
+		http.Error(w, fmt.Sprintf("cannot issue more than %d tickets at a time", maxTicketsPerIssue), http.StatusBadRequest)
 		return
 	}
 

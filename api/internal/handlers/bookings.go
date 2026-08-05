@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"math"
 	"net/http"
@@ -21,6 +22,9 @@ import (
 )
 
 const holdDuration = 5 * time.Minute
+
+// maxSeatsPerBooking caps how many seats one customer can hold in a single request — enforced here (not just in the UI) since the API is the actual trust boundary.
+const maxSeatsPerBooking = 5
 
 type BookingHandler struct {
 	Pool    *pgxpool.Pool
@@ -158,7 +162,7 @@ type bookingPassengerInput struct {
 }
 
 type createBookingRequest struct {
-	TripSeatID     int32                 `json:"trip_seat_id"`
+	TripSeatIDs    []int32               `json:"trip_seat_ids"`
 	StartStationID int32                 `json:"start_station_id"`
 	EndStationID   int32                 `json:"end_station_id"`
 	Passenger      bookingPassengerInput `json:"passenger"`
@@ -175,8 +179,107 @@ type bookingResponse struct {
 	HeldUntil        *string `json:"held_until,omitempty"`
 }
 
-// CreateBooking places a 5-minute hold on a specific seat for a specific leg.
-// The hold is blocked from overlapping with any other PENDING or CONFIRMED booking on that seat by the no_overlapping_segments exclusion constraint, so a race between two concurrent requests for the same range is resolved atomically by Postgres, not by application-level locking.
+// seatBookingError is a client-facing failure tied to one seat within a bulk booking request — carries the HTTP status the whole request should fail with, since one bad seat fails the entire (single-transaction) hold.
+type seatBookingError struct {
+	status int
+	msg    string
+}
+
+func (e *seatBookingError) Error() string { return e.msg }
+
+// bookOneSeat runs the full hold pipeline (seat lookup, route and fare validation, stale-hold cleanup, booking insert) for a single seat within an already-open transaction, so CreateBooking can call it once per seat and hold every seat in the request atomically.
+func bookOneSeat(ctx context.Context, qtx *generated.Queries, tripSeatID, startStationID, endStationID, passengerID int32) (bookingResponse, error) {
+	tripSeat, err := qtx.GetTripSeat(ctx, tripSeatID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return bookingResponse{}, &seatBookingError{http.StatusNotFound, fmt.Sprintf("seat %d not found on this trip", tripSeatID)}
+		}
+		return bookingResponse{}, fmt.Errorf("failed to load seat: %w", err)
+	}
+	if !tripSeat.IsReservable {
+		return bookingResponse{}, &seatBookingError{http.StatusBadRequest, fmt.Sprintf("seat %d is in an unreserved coach and cannot be individually booked", tripSeatID)}
+	}
+
+	stops, err := stopsByStation(ctx, qtx, tripSeat.RouteVersionID)
+	if err != nil {
+		return bookingResponse{}, fmt.Errorf("failed to load route stations: %w", err)
+	}
+	start, ok := stops[startStationID]
+	if !ok {
+		return bookingResponse{}, &seatBookingError{http.StatusBadRequest, "start station is not on this trip's route"}
+	}
+	end, ok := stops[endStationID]
+	if !ok {
+		return bookingResponse{}, &seatBookingError{http.StatusBadRequest, "end station is not on this trip's route"}
+	}
+	if start.StopSequence >= end.StopSequence {
+		return bookingResponse{}, &seatBookingError{http.StatusBadRequest, "start station must come before end station on the route"}
+	}
+
+	fareRow, err := qtx.GetTripFare(ctx, generated.GetTripFareParams{
+		TripID:       tripSeat.TripID,
+		Class:        tripSeat.Class,
+		IsReservable: true,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return bookingResponse{}, &seatBookingError{http.StatusConflict, "no fare configured for this seat's class on this trip"}
+		}
+		return bookingResponse{}, fmt.Errorf("failed to load fare: %w", err)
+	}
+	ratePerKm, err := numericToFloat64(fareRow.RatePerKm)
+	if err != nil {
+		return bookingResponse{}, fmt.Errorf("invalid fare rate: %w", err)
+	}
+	distanceKm := end.DistanceFromOrigin - start.DistanceFromOrigin
+	fare := roundToNearest5(distanceKm * ratePerKm)
+	fareNumeric, err := numericFromFloat64(fare)
+	if err != nil {
+		return bookingResponse{}, fmt.Errorf("failed to compute fare: %w", err)
+	}
+
+	reference, err := generateBookingReference()
+	if err != nil {
+		return bookingResponse{}, fmt.Errorf("failed to generate booking reference: %w", err)
+	}
+
+	// Clear out any abandoned hold on this seat first, so it doesn't spuriously block this attempt via the exclusion constraint.
+	if err := qtx.ExpireStaleHoldsForTripSeat(ctx, tripSeat.ID); err != nil {
+		return bookingResponse{}, fmt.Errorf("failed to check seat availability: %w", err)
+	}
+
+	heldUntil := pgtype.Timestamp{Time: time.Now().Add(holdDuration), Valid: true}
+
+	booking, err := qtx.CreateBooking(ctx, generated.CreateBookingParams{
+		PassengerID:      passengerID,
+		TripSeatID:       tripSeat.ID,
+		StartStationID:   startStationID,
+		EndStationID:     endStationID,
+		StartSequence:    start.StopSequence,
+		EndSequence:      end.StopSequence,
+		Fare:             fareNumeric,
+		BookingReference: reference,
+		HeldUntil:        heldUntil,
+	})
+	if err != nil {
+		return bookingResponse{}, err
+	}
+
+	held := booking.HeldUntil.Time.Format(time.RFC3339)
+	return bookingResponse{
+		ID:               booking.ID,
+		TripSeatID:       booking.TripSeatID,
+		StartStationID:   booking.StartStationID,
+		EndStationID:     booking.EndStationID,
+		Fare:             fare,
+		Status:           string(booking.Status),
+		BookingReference: booking.BookingReference,
+		HeldUntil:        &held,
+	}, nil
+}
+
+// CreateBooking places a 5-minute hold on up to maxSeatsPerBooking seats for one passenger on a specific leg, all in a single transaction.
+// Each hold is blocked from overlapping with any other PENDING or CONFIRMED booking on that seat by the no_overlapping_segments exclusion constraint, so a race between two concurrent requests for the same range is resolved atomically by Postgres, not by application-level locking.
 func (h *BookingHandler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 	var req createBookingRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -187,75 +290,24 @@ func (h *BookingHandler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "passenger name is required", http.StatusBadRequest)
 		return
 	}
+	if len(req.TripSeatIDs) == 0 {
+		http.Error(w, "at least one seat must be selected", http.StatusBadRequest)
+		return
+	}
+	if len(req.TripSeatIDs) > maxSeatsPerBooking {
+		http.Error(w, fmt.Sprintf("cannot book more than %d seats at a time", maxSeatsPerBooking), http.StatusBadRequest)
+		return
+	}
+	seen := make(map[int32]bool, len(req.TripSeatIDs))
+	for _, id := range req.TripSeatIDs {
+		if seen[id] {
+			http.Error(w, "the same seat was selected more than once", http.StatusBadRequest)
+			return
+		}
+		seen[id] = true
+	}
 
 	ctx := r.Context()
-
-	tripSeat, err := h.Queries.GetTripSeat(ctx, req.TripSeatID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			http.Error(w, "seat not found on this trip", http.StatusNotFound)
-			return
-		}
-		http.Error(w, "failed to load seat", http.StatusInternalServerError)
-		return
-	}
-	if !tripSeat.IsReservable {
-		http.Error(w, "this seat is in an unreserved coach and cannot be individually booked", http.StatusBadRequest)
-		return
-	}
-
-	stops, err := stopsByStation(ctx, h.Queries, tripSeat.RouteVersionID)
-	if err != nil {
-		log.Printf("CreateBooking stopsByStation error: %v (%T)", err, err)
-		http.Error(w, "failed to load route stations", http.StatusInternalServerError)
-		return
-	}
-	start, ok := stops[req.StartStationID]
-	if !ok {
-		http.Error(w, "start station is not on this trip's route", http.StatusBadRequest)
-		return
-	}
-	end, ok := stops[req.EndStationID]
-	if !ok {
-		http.Error(w, "end station is not on this trip's route", http.StatusBadRequest)
-		return
-	}
-	if start.StopSequence >= end.StopSequence {
-		http.Error(w, "start station must come before end station on the route", http.StatusBadRequest)
-		return
-	}
-
-	fareRow, err := h.Queries.GetTripFare(ctx, generated.GetTripFareParams{
-		TripID:       tripSeat.TripID,
-		Class:        tripSeat.Class,
-		IsReservable: true,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			http.Error(w, "no fare configured for this seat's class on this trip", http.StatusConflict)
-			return
-		}
-		http.Error(w, "failed to load fare", http.StatusInternalServerError)
-		return
-	}
-	ratePerKm, err := numericToFloat64(fareRow.RatePerKm)
-	if err != nil {
-		http.Error(w, "invalid fare rate", http.StatusInternalServerError)
-		return
-	}
-	distanceKm := end.DistanceFromOrigin - start.DistanceFromOrigin
-	fare := roundToNearest5(distanceKm * ratePerKm)
-	fareNumeric, err := numericFromFloat64(fare)
-	if err != nil {
-		http.Error(w, "failed to compute fare", http.StatusInternalServerError)
-		return
-	}
-
-	reference, err := generateBookingReference()
-	if err != nil {
-		http.Error(w, "failed to generate booking reference", http.StatusInternalServerError)
-		return
-	}
 
 	tx, err := h.Pool.Begin(ctx)
 	if err != nil {
@@ -265,12 +317,6 @@ func (h *BookingHandler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback(ctx)
 
 	qtx := h.Queries.WithTx(tx)
-
-	// Clear out any abandoned hold on this seat first, so it doesn't spuriously block this attempt via the exclusion constraint.
-	if err := qtx.ExpireStaleHoldsForTripSeat(ctx, tripSeat.ID); err != nil {
-		http.Error(w, "failed to check seat availability", http.StatusInternalServerError)
-		return
-	}
 
 	var email, phone *string
 	if req.Passenger.Email != "" {
@@ -290,26 +336,23 @@ func (h *BookingHandler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	heldUntil := pgtype.Timestamp{Time: time.Now().Add(holdDuration), Valid: true}
-
-	booking, err := qtx.CreateBooking(ctx, generated.CreateBookingParams{
-		PassengerID:      passenger.ID,
-		TripSeatID:       tripSeat.ID,
-		StartStationID:   req.StartStationID,
-		EndStationID:     req.EndStationID,
-		StartSequence:    start.StopSequence,
-		EndSequence:      end.StopSequence,
-		Fare:             fareNumeric,
-		BookingReference: reference,
-		HeldUntil:        heldUntil,
-	})
-	if err != nil {
-		if apierror.WritePostgresError(w, err) {
+	bookings := make([]bookingResponse, 0, len(req.TripSeatIDs))
+	for _, tripSeatID := range req.TripSeatIDs {
+		resp, err := bookOneSeat(ctx, qtx, tripSeatID, req.StartStationID, req.EndStationID, passenger.ID)
+		if err != nil {
+			var seatErr *seatBookingError
+			if errors.As(err, &seatErr) {
+				http.Error(w, seatErr.msg, seatErr.status)
+				return
+			}
+			if apierror.WritePostgresError(w, err) {
+				return
+			}
+			log.Printf("CreateBooking bookOneSeat error: %v (%T)", err, err)
+			http.Error(w, "failed to create booking", http.StatusInternalServerError)
 			return
 		}
-		log.Printf("CreateBooking CreateBooking error: %v (%T)", err, err)
-		http.Error(w, "failed to create booking", http.StatusInternalServerError)
-		return
+		bookings = append(bookings, resp)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -320,19 +363,9 @@ func (h *BookingHandler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	held := booking.HeldUntil.Time.Format(time.RFC3339)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(bookingResponse{
-		ID:               booking.ID,
-		TripSeatID:       booking.TripSeatID,
-		StartStationID:   booking.StartStationID,
-		EndStationID:     booking.EndStationID,
-		Fare:             fare,
-		Status:           string(booking.Status),
-		BookingReference: booking.BookingReference,
-		HeldUntil:        &held,
-	})
+	json.NewEncoder(w).Encode(map[string]any{"bookings": bookings})
 }
 
 // ConfirmBooking finalizes a hold.
